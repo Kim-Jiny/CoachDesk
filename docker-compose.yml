@@ -1,0 +1,98 @@
+name: coachdesk
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: coachdesk-db
+    restart: unless-stopped
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:55440:5432"
+    environment:
+      - POSTGRES_DB=coachdesk
+      - POSTGRES_USER=coachdesk
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coachdesk -d coachdesk"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - app-network
+
+  minio:
+    image: minio/minio
+    container_name: coachdesk-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    ports:
+      - "127.0.0.1:59010:9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - app-network
+
+  minio-init:
+    image: minio/mc
+    container_name: coachdesk-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set myminio http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD};
+      mc mb --ignore-existing myminio/coachdesk;
+      mc anonymous set download myminio/coachdesk;
+      exit 0;
+      "
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+    networks:
+      - app-network
+
+  app:
+    build: ./server
+    container_name: coachdesk-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      - DATABASE_URL=postgresql://coachdesk:${DB_PASSWORD}@coachdesk-db:5432/coachdesk?sslmode=disable
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      - MINIO_BUCKET=coachdesk
+      - STORAGE_PUBLIC_URL=${STORAGE_PUBLIC_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+      - PORT=3000
+      - NODE_ENV=production
+    expose:
+      - "3000"
+    ports:
+      - "127.0.0.1:3010:3000"
+    networks:
+      - app-network
+
+volumes:
+  pgdata:
+  minio_data:
+
+networks:
+  app-network:
+    driver: bridge

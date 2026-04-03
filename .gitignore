@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+server/node_modules/
+
+# Build
+server/dist/
+app/.dart_tool/
+app/build/
+
+# Environment
+.env
+.env.local
+.env.production
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Prisma
+server/prisma/migrations/
+
+# Flutter
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/.packages
+app/pubspec.lock
+
+# Docker
+docker-compose.override.yml
+
+# Firebase
+firebase-service-account.json
+app/android/app/google-services.json
+app/ios/Runner/GoogleService-Info.plist
+
+# Claude local settings
+.claude/settings.local.json

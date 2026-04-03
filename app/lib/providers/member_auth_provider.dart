@@ -1,0 +1,365 @@
+import 'package:dio/dio.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+
+import '../core/api_client.dart';
+import '../core/constants.dart';
+import '../core/fcm_service.dart';
+import '../models/member_booking.dart';
+
+enum MemberAuthStatus { initial, authenticated, unauthenticated }
+
+class MemberClass {
+  final String memberId;
+  final String organizationId;
+  final String organizationName;
+  final List<MemberCoach> coaches;
+
+  const MemberClass({
+    required this.memberId,
+    required this.organizationId,
+    required this.organizationName,
+    required this.coaches,
+  });
+
+  factory MemberClass.fromJson(Map<String, dynamic> json) {
+    final org = json['organization'] as Map<String, dynamic>;
+    final coachList = (json['coaches'] as List?) ?? [];
+    return MemberClass(
+      memberId: json['memberId'] as String,
+      organizationId: org['id'] as String,
+      organizationName: org['name'] as String,
+      coaches: coachList.map((c) => MemberCoach.fromJson(c as Map<String, dynamic>)).toList(),
+    );
+  }
+}
+
+class MemberCoach {
+  final String id;
+  final String name;
+  final String? profileImage;
+
+  const MemberCoach({required this.id, required this.name, this.profileImage});
+
+  factory MemberCoach.fromJson(Map<String, dynamic> json) {
+    return MemberCoach(
+      id: json['id'] as String,
+      name: json['name'] as String,
+      profileImage: json['profileImage'] as String?,
+    );
+  }
+}
+
+class MemberAuthState {
+  final MemberAuthStatus status;
+  final String? accountId;
+  final String? name;
+  final String? email;
+  final List<MemberClass> classes;
+  final bool isLoading;
+  final String? error;
+
+  const MemberAuthState({
+    this.status = MemberAuthStatus.initial,
+    this.accountId,
+    this.name,
+    this.email,
+    this.classes = const [],
+    this.isLoading = false,
+    this.error,
+  });
+
+  MemberAuthState copyWith({
+    MemberAuthStatus? status,
+    String? accountId,
+    String? name,
+    String? email,
+    List<MemberClass>? classes,
+    bool? isLoading,
+    String? error,
+  }) {
+    return MemberAuthState(
+      status: status ?? this.status,
+      accountId: accountId ?? this.accountId,
+      name: name ?? this.name,
+      email: email ?? this.email,
+      classes: classes ?? this.classes,
+      isLoading: isLoading ?? this.isLoading,
+      error: error,
+    );
+  }
+}
+
+class MemberAuthNotifier extends Notifier<MemberAuthState> {
+  @override
+  MemberAuthState build() => const MemberAuthState();
+
+  Dio get _dio => ref.read(dioProvider);
+
+  void setUnauthenticated() {
+    state = state.copyWith(status: MemberAuthStatus.unauthenticated);
+  }
+
+  Future<void> checkAuth() async {
+    final box = Hive.box(AppConstants.authBox);
+    final isMember = box.get(AppConstants.isMemberAccountKey) as bool? ?? false;
+    if (!isMember) {
+      state = state.copyWith(status: MemberAuthStatus.unauthenticated);
+      return;
+    }
+
+    final token = ApiClient.getAccessToken();
+    if (token == null) {
+      state = state.copyWith(status: MemberAuthStatus.unauthenticated);
+      return;
+    }
+
+    try {
+      final response = await _dio.get('/auth/member/profile');
+      final account = response.data['memberAccount'] as Map<String, dynamic>;
+
+      state = state.copyWith(
+        status: MemberAuthStatus.authenticated,
+        accountId: account['id'] as String,
+        name: account['name'] as String,
+        email: account['email'] as String,
+      );
+
+      await fetchMyClasses();
+    } catch (_) {
+      await ApiClient.clearTokens();
+      final box = Hive.box(AppConstants.authBox);
+      await box.delete(AppConstants.isMemberAccountKey);
+      state = state.copyWith(status: MemberAuthStatus.unauthenticated);
+    }
+  }
+
+  Future<bool> register({
+    required String name,
+    required String email,
+    required String password,
+  }) async {
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      final response = await _dio.post('/auth/member/register', data: {
+        'name': name,
+        'email': email,
+        'password': password,
+      });
+
+      await ApiClient.saveMemberTokens(
+        accessToken: response.data['accessToken'],
+        refreshToken: response.data['refreshToken'],
+      );
+
+      final account = response.data['memberAccount'] as Map<String, dynamic>;
+      final box = Hive.box(AppConstants.authBox);
+      await box.put(AppConstants.isMemberAccountKey, true);
+      await box.put(AppConstants.memberNameKey, account['name']);
+
+      state = state.copyWith(
+        status: MemberAuthStatus.authenticated,
+        accountId: account['id'] as String,
+        name: account['name'] as String,
+        email: account['email'] as String,
+        isLoading: false,
+      );
+
+      FcmService.registerToken(isMember: true);
+      return true;
+    } on DioException catch (e) {
+      final msg = e.response?.data?['error'] as String? ?? '회원가입에 실패했습니다';
+      state = state.copyWith(isLoading: false, error: msg);
+      return false;
+    }
+  }
+
+  Future<bool> login({required String email, required String password}) async {
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      final response = await _dio.post('/auth/member/login', data: {
+        'email': email,
+        'password': password,
+      });
+
+      await ApiClient.saveMemberTokens(
+        accessToken: response.data['accessToken'],
+        refreshToken: response.data['refreshToken'],
+      );
+
+      final account = response.data['memberAccount'] as Map<String, dynamic>;
+      final box = Hive.box(AppConstants.authBox);
+      await box.put(AppConstants.isMemberAccountKey, true);
+      await box.put(AppConstants.memberNameKey, account['name']);
+
+      state = state.copyWith(
+        status: MemberAuthStatus.authenticated,
+        accountId: account['id'] as String,
+        name: account['name'] as String,
+        email: account['email'] as String,
+        isLoading: false,
+      );
+
+      await fetchMyClasses();
+      FcmService.registerToken(isMember: true);
+      return true;
+    } on DioException catch (e) {
+      final msg = e.response?.data?['error'] as String? ?? '로그인에 실패했습니다';
+      state = state.copyWith(isLoading: false, error: msg);
+      return false;
+    }
+  }
+
+  Future<bool> socialLogin({
+    required String provider,
+    required String idToken,
+    String? name,
+  }) async {
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      final payload = <String, dynamic>{
+        'idToken': idToken,
+        'provider': provider,
+      };
+      if (name != null && name.trim().isNotEmpty) {
+        payload['name'] = name.trim();
+      }
+
+      final response = await _dio.post('/auth/member/social', data: payload);
+
+      await ApiClient.saveMemberTokens(
+        accessToken: response.data['accessToken'],
+        refreshToken: response.data['refreshToken'],
+      );
+
+      final account = response.data['memberAccount'] as Map<String, dynamic>;
+      final box = Hive.box(AppConstants.authBox);
+      await box.put(AppConstants.isMemberAccountKey, true);
+      await box.put(AppConstants.memberNameKey, account['name']);
+
+      state = state.copyWith(
+        status: MemberAuthStatus.authenticated,
+        accountId: account['id'] as String,
+        name: account['name'] as String,
+        email: account['email'] as String,
+        isLoading: false,
+      );
+
+      await fetchMyClasses();
+      FcmService.registerToken(isMember: true);
+      return true;
+    } on DioException catch (e) {
+      final msg = e.response?.data?['error'] as String? ?? '소셜 로그인 실패';
+      state = state.copyWith(isLoading: false, error: msg);
+      return false;
+    } catch (_) {
+      state = state.copyWith(isLoading: false, error: '소셜 로그인 실패');
+      return false;
+    }
+  }
+
+  Future<bool> joinClass(String inviteCode) async {
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      await _dio.post('/auth/member/join', data: {'inviteCode': inviteCode});
+      await fetchMyClasses();
+      state = state.copyWith(isLoading: false, error: null);
+      return true;
+    } on DioException catch (e) {
+      final msg = e.response?.data?['error'] as String? ?? '수업 참여에 실패했습니다';
+      state = state.copyWith(isLoading: false, error: msg);
+      return false;
+    }
+  }
+
+  Future<void> fetchMyClasses() async {
+    try {
+      final response = await _dio.get('/auth/member/my-classes');
+      final list = (response.data['classes'] as List)
+          .map((c) => MemberClass.fromJson(c as Map<String, dynamic>))
+          .toList();
+      state = state.copyWith(classes: list, error: null);
+    } on DioException catch (e) {
+      state = state.copyWith(
+        error: e.response?.data?['error'] as String? ?? '참여 중인 수업을 불러오지 못했습니다',
+      );
+    } catch (_) {
+      state = state.copyWith(error: '참여 중인 수업을 불러오지 못했습니다');
+    }
+  }
+
+  Future<List<MemberSlot>> fetchSlots(String orgId, String date) async {
+    try {
+      final response = await _dio.get('/auth/member/studios/$orgId/slots', queryParameters: {'date': date});
+      return (response.data as List)
+          .map((json) => MemberSlot.fromJson(json as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<String?> reserve({
+    required String organizationId,
+    required String coachId,
+    required String date,
+    required String startTime,
+    required String endTime,
+  }) async {
+    try {
+      final response = await _dio.post('/auth/member/reserve', data: {
+        'organizationId': organizationId,
+        'coachId': coachId,
+        'date': date,
+        'startTime': startTime,
+        'endTime': endTime,
+      });
+      return response.data['status'] as String? ?? 'CONFIRMED';
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<bool> cancelReservation(String reservationId) async {
+    try {
+      await _dio.delete('/auth/member/reservations/$reservationId');
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<List<MemberReservationSummary>> fetchMyReservations() async {
+    try {
+      final response = await _dio.get('/auth/member/my-reservations');
+      return (response.data['reservations'] as List)
+          .map((json) => MemberReservationSummary.fromJson(json as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Switch from admin mode to member mode.
+  /// Returns true if member token exists and switch succeeded.
+  Future<bool> switchFromAdmin() async {
+    final memberToken = ApiClient.getMemberAccessToken();
+    if (memberToken == null) return false;
+
+    final box = Hive.box(AppConstants.authBox);
+    await box.put(AppConstants.isMemberAccountKey, true);
+    await checkAuth();
+    return state.status == MemberAuthStatus.authenticated;
+  }
+
+  Future<void> logout() async {
+    await ApiClient.clearTokens();
+    final box = Hive.box(AppConstants.authBox);
+    await box.delete(AppConstants.isMemberAccountKey);
+    await box.delete(AppConstants.memberNameKey);
+    state = const MemberAuthState(status: MemberAuthStatus.unauthenticated);
+  }
+}
+
+final memberAuthProvider =
+    NotifierProvider<MemberAuthNotifier, MemberAuthState>(MemberAuthNotifier.new);

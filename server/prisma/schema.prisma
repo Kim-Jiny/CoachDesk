@@ -1,0 +1,298 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Organization ──────────────────────────────────────────
+model Organization {
+  id                 String            @id @default(uuid())
+  name               String
+  description        String?
+  logoUrl            String?
+  inviteCode         String            @unique
+  bookingMode        BookingMode       @default(PRIVATE)
+  reservationPolicy  ReservationPolicy @default(AUTO_CONFIRM)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  memberships OrgMembership[]
+  members     Member[]
+  schedules   Schedule[]
+  scheduleOverrides ScheduleOverride[]
+  reservations Reservation[]
+  packages    Package[]
+  sessions    Session[]
+  notifications Notification[]
+}
+
+enum BookingMode {
+  PRIVATE
+  PUBLIC
+}
+
+enum ReservationPolicy {
+  AUTO_CONFIRM
+  REQUEST_APPROVAL
+}
+
+// ─── User (Coach / Admin) ──────────────────────────────────
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  password     String
+  name         String
+  phone        String?
+  profileImage String?
+  fcmToken     String?
+  googleId     String?  @unique
+  appleId      String?  @unique
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships   OrgMembership[]
+  schedules     Schedule[]
+  scheduleOverrides ScheduleOverride[]
+  reservations  Reservation[]    @relation("coachReservations")
+  sessions      Session[]        @relation("coachSessions")
+  notifications Notification[]
+}
+
+// ─── OrgMembership (User ↔ Org) ───────────────────────────
+model OrgMembership {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  role           OrgRole  @default(COACH)
+  createdAt      DateTime @default(now())
+
+  @@unique([userId, organizationId])
+}
+
+enum OrgRole {
+  OWNER
+  ADMIN
+  COACH
+}
+
+// ─── Member (고객) ─────────────────────────────────────────
+model Member {
+  id              String       @id @default(uuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name            String
+  phone           String?
+  email           String?
+  birthDate       DateTime?
+  gender          Gender?
+  memo            String?
+  status          MemberStatus @default(ACTIVE)
+  memberAccountId String?
+  memberAccount   MemberAccount? @relation(fields: [memberAccountId], references: [id])
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  reservations    Reservation[]
+  memberPackages  MemberPackage[]
+  sessions        Session[]      @relation("memberSessions")
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum MemberStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+// ─── MemberAccount (공개예약 로그인용) ─────────────────────
+model MemberAccount {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  fcmToken  String?
+  googleId  String?  @unique
+  appleId   String?  @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members   Member[]
+}
+
+// ─── Schedule (코치 가용 시간 템플릿) ──────────────────────
+model Schedule {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  coachId        String
+  coach          User         @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  dayOfWeek      Int          // 0=Sunday, 6=Saturday
+  startTime      String       // "09:00"
+  endTime        String       // "10:00"
+  slotDuration   Int          @default(60) // minutes
+  breakMinutes   Int          @default(0)
+  maxCapacity    Int          @default(1)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+// ─── ScheduleOverride (특정 날짜 추가/제외) ─────────────────
+model ScheduleOverride {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  coachId        String
+  coach          User         @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  date           DateTime     @db.Date
+  type           OverrideType
+  startTime      String?      // OPEN일 때만
+  endTime        String?
+  slotDuration   Int?
+  breakMinutes   Int?
+  maxCapacity    Int?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, date])
+  @@index([coachId, date])
+}
+
+enum OverrideType {
+  OPEN
+  CLOSED
+}
+
+// ─── Reservation (예약) ────────────────────────────────────
+model Reservation {
+  id             String            @id @default(uuid())
+  organizationId String
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  coachId        String
+  coach          User              @relation("coachReservations", fields: [coachId], references: [id], onDelete: Cascade)
+  memberId       String
+  member         Member            @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  date           DateTime          @db.Date
+  startTime      String            // "09:00"
+  endTime        String            // "10:00"
+  status         ReservationStatus @default(PENDING)
+  memo           String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  session        Session?
+}
+
+enum ReservationStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+// ─── Package (패키지 템플릿) ───────────────────────────────
+model Package {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  totalSessions  Int
+  price          Int          // KRW
+  validDays      Int?         // null = unlimited
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  memberPackages MemberPackage[]
+}
+
+// ─── MemberPackage (회원에 할당된 패키지) ──────────────────
+model MemberPackage {
+  id                String              @id @default(uuid())
+  memberId          String
+  member            Member              @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  packageId         String
+  package           Package             @relation(fields: [packageId], references: [id])
+  totalSessions     Int
+  usedSessions      Int                 @default(0)
+  remainingSessions Int
+  purchaseDate      DateTime            @default(now())
+  expiryDate        DateTime?
+  paidAmount        Int
+  paymentMethod     PaymentMethod       @default(CASH)
+  status            MemberPackageStatus @default(ACTIVE)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  sessions          Session[]
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  TRANSFER
+}
+
+enum MemberPackageStatus {
+  ACTIVE
+  EXPIRED
+  EXHAUSTED
+  REFUNDED
+}
+
+// ─── Session (완료된 세션 기록) ────────────────────────────
+model Session {
+  id              String       @id @default(uuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  reservationId   String       @unique
+  reservation     Reservation  @relation(fields: [reservationId], references: [id])
+  coachId         String
+  coach           User         @relation("coachSessions", fields: [coachId], references: [id])
+  memberId        String
+  member          Member       @relation("memberSessions", fields: [memberId], references: [id])
+  memberPackageId String?
+  memberPackage   MemberPackage? @relation(fields: [memberPackageId], references: [id])
+  date            DateTime     @db.Date
+  attendance      Attendance   @default(PRESENT)
+  memo            String?
+  workoutRecords  Json?
+  feedback        String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+}
+
+enum Attendance {
+  PRESENT
+  NO_SHOW
+  LATE
+  CANCELLED
+}
+
+// ─── Notification ──────────────────────────────────────────
+model Notification {
+  id             String       @id @default(uuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  type           String
+  title          String
+  body           String
+  data           Json?
+  isRead         Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+}

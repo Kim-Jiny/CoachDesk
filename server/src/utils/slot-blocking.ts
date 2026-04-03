@@ -1,0 +1,24 @@
+export function timeToMinutes(time: string): number {
+  const [h, m] = time.split(':').map(Number);
+  return h * 60 + m;
+}
+
+export function isTimeRangeClosed(
+  override: {
+    type: string;
+    startTime?: string | null;
+    endTime?: string | null;
+  },
+  slotStartTime: string,
+  slotEndTime: string,
+): boolean {
+  if (override.type !== 'CLOSED') return false;
+  if (!override.startTime || !override.endTime) return true;
+
+  const overrideStart = timeToMinutes(override.startTime);
+  const overrideEnd = timeToMinutes(override.endTime);
+  const slotStart = timeToMinutes(slotStartTime);
+  const slotEnd = timeToMinutes(slotEndTime);
+
+  return slotStart < overrideEnd && slotEnd > overrideStart;
+}
