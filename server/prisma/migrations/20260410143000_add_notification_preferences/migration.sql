@@ -1,5 +1,2 @@
-ALTER TABLE "User"
-ADD COLUMN "notificationPreferences" TEXT;
-
-ALTER TABLE "MemberAccount"
-ADD COLUMN "notificationPreferences" TEXT;
+-- No-op.
+-- Kept only to preserve migration history ordering after rebasing the init migration.

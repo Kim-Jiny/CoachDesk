@@ -1,2 +1,2 @@
-ALTER TABLE "Package"
-ADD COLUMN "isPublic" BOOLEAN NOT NULL DEFAULT false;
+-- No-op.
+-- Kept only to preserve migration history ordering after rebasing the init migration.

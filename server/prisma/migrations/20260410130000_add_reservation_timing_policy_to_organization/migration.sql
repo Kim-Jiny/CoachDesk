@@ -1,4 +1,2 @@
-ALTER TABLE "Organization"
-ADD COLUMN "reservationOpenDaysBefore" INTEGER NOT NULL DEFAULT 30,
-ADD COLUMN "reservationOpenHoursBefore" INTEGER NOT NULL DEFAULT 0,
-ADD COLUMN "reservationCancelDeadlineMinutes" INTEGER NOT NULL DEFAULT 120;
+-- No-op.
+-- Kept only to preserve migration history ordering after rebasing the init migration.

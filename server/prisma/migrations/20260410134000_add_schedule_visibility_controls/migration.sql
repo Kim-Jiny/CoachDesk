@@ -1,8 +1,2 @@
-ALTER TABLE "Schedule"
-ADD COLUMN "isPublic" BOOLEAN NOT NULL DEFAULT false;
-
-ALTER TABLE "ScheduleOverride"
-ADD COLUMN "isPublic" BOOLEAN;
-
-ALTER TYPE "OverrideType" ADD VALUE IF NOT EXISTS 'VISIBLE';
-ALTER TYPE "OverrideType" ADD VALUE IF NOT EXISTS 'HIDDEN';
+-- No-op.
+-- Kept only to preserve migration history ordering after rebasing the init migration.

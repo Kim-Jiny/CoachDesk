@@ -1,5 +1,2 @@
-ALTER TABLE "Schedule"
-ADD COLUMN IF NOT EXISTS "breakMinutes" INTEGER NOT NULL DEFAULT 0;
-
-ALTER TABLE "ScheduleOverride"
-ADD COLUMN IF NOT EXISTS "breakMinutes" INTEGER;
+-- No-op.
+-- Kept only to preserve migration history ordering after rebasing the init migration.

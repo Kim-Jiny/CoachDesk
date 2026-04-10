@@ -1,3 +1,2 @@
-ALTER TABLE "Organization"
-ADD COLUMN "reservationNoticeText" TEXT,
-ADD COLUMN "reservationNoticeImageUrl" TEXT;
+-- No-op.
+-- Kept only to preserve migration history ordering after rebasing the init migration.
