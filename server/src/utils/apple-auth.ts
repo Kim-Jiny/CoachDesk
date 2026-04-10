@@ -27,6 +27,7 @@ type AppleIdentityTokenPayload = {
 
 const APPLE_KEYS_URL = 'https://appleid.apple.com/auth/keys';
 const APPLE_KEYS_TTL_MS = 60 * 60 * 1000;
+const APPLE_KEYS_FETCH_TIMEOUT_MS = 4000;
 
 let cachedKeys: AppleJwk[] = [];
 let cachedAt = 0;
@@ -37,8 +38,30 @@ async function fetchAppleKeys(): Promise<AppleJwk[]> {
     return cachedKeys;
   }
 
-  const response = await fetch(APPLE_KEYS_URL);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), APPLE_KEYS_FETCH_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(APPLE_KEYS_URL, { signal: controller.signal });
+  } catch (err) {
+    if (cachedKeys.length > 0) {
+      return cachedKeys;
+    }
+
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error('Apple public key request timed out');
+    }
+
+    throw new Error('Failed to reach Apple public key server');
+  } finally {
+    clearTimeout(timeout);
+  }
+
   if (!response.ok) {
+    if (cachedKeys.length > 0) {
+      return cachedKeys;
+    }
     throw new Error(`Failed to fetch Apple public keys: ${response.status}`);
   }
 

@@ -1414,7 +1414,7 @@ function handleSocialLoginError(res: Response, label: string, err: unknown) {
 
     const message = err.message;
     if (
-      /apple|jwt|token|audience|issuer|public key|signature|invalid/i.test(message)
+      /apple|jwt|token|audience|issuer|public key|signature|invalid|timed out|failed to reach/i.test(message)
     ) {
       res.status(400).json({ error: message });
       return;
