@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
 import '../core/api_client.dart';
+import '../core/fcm_service.dart';
 import '../core/socket_service.dart';
 import '../models/chat.dart';
 
@@ -74,6 +75,12 @@ class ChatRoomListNotifier extends Notifier<ChatRoomListState> {
     final activeRoomId = ref.read(activeChatRoomIdProvider);
     final isActiveRoom = activeRoomId == chatRoomId;
 
+    if (!isActiveRoom) {
+      final senderName = data['senderName'] as String? ?? '새 메시지';
+      final content = messageData['content'] as String? ?? '';
+      FcmService.showForegroundChatAlert(title: senderName, body: content);
+    }
+
     final rooms = [...state.rooms];
     final index = rooms.indexWhere((r) => r.id == chatRoomId);
 
@@ -83,7 +90,9 @@ class ChatRoomListNotifier extends Notifier<ChatRoomListState> {
         lastMessage: ChatMessagePreview(
           content: messageData['content'] as String? ?? '',
           senderType: messageData['senderType'] as String? ?? '',
-          createdAt: DateTime.tryParse(messageData['createdAt'] as String? ?? '') ?? DateTime.now(),
+          createdAt:
+              DateTime.tryParse(messageData['createdAt'] as String? ?? '') ??
+              DateTime.now(),
         ),
         lastMessageAt: DateTime.now(),
         unreadCount: isActiveRoom ? 0 : room.unreadCount + 1,
@@ -102,7 +111,10 @@ class ChatRoomListNotifier extends Notifier<ChatRoomListState> {
     state = state.copyWith(isLoading: true, error: null);
     try {
       final mode = ApiClient.isMemberMode ? 'member' : 'admin';
-      final response = await _dio.get('/chat/rooms', queryParameters: {'mode': mode});
+      final response = await _dio.get(
+        '/chat/rooms',
+        queryParameters: {'mode': mode},
+      );
       final rooms = (response.data as List)
           .map((json) => ChatRoom.fromJson(json as Map<String, dynamic>))
           .toList();
@@ -110,7 +122,9 @@ class ChatRoomListNotifier extends Notifier<ChatRoomListState> {
     } on DioException catch (e) {
       state = state.copyWith(
         isLoading: false,
-        error: e.response?.data?['error'] as String? ?? 'Failed to load chat rooms',
+        error:
+            e.response?.data?['error'] as String? ??
+            'Failed to load chat rooms',
       );
     }
   }
@@ -121,11 +135,14 @@ class ChatRoomListNotifier extends Notifier<ChatRoomListState> {
     required String memberAccountId,
   }) async {
     try {
-      final response = await _dio.post('/chat/rooms', data: {
-        'organizationId': organizationId,
-        'userId': userId,
-        'memberAccountId': memberAccountId,
-      });
+      final response = await _dio.post(
+        '/chat/rooms',
+        data: {
+          'organizationId': organizationId,
+          'userId': userId,
+          'memberAccountId': memberAccountId,
+        },
+      );
       return ChatRoom.fromJson(response.data as Map<String, dynamic>);
     } catch (_) {
       return null;
@@ -155,7 +172,9 @@ class ChatRoomListNotifier extends Notifier<ChatRoomListState> {
 }
 
 final chatRoomListProvider =
-    NotifierProvider<ChatRoomListNotifier, ChatRoomListState>(ChatRoomListNotifier.new);
+    NotifierProvider<ChatRoomListNotifier, ChatRoomListState>(
+      ChatRoomListNotifier.new,
+    );
 
 // ─── Chat Messages ──────────────────────────────────────
 
@@ -178,7 +197,9 @@ class ChatMessagesState {
     return ChatMessagesState(
       messages: messages ?? this.messages,
       isLoading: isLoading ?? this.isLoading,
-      nextCursor: nextCursor == _sentinel ? this.nextCursor : nextCursor as String?,
+      nextCursor: nextCursor == _sentinel
+          ? this.nextCursor
+          : nextCursor as String?,
     );
   }
 }
@@ -190,7 +211,8 @@ class ChatMessagesNotifier extends StateNotifier<ChatMessagesState> {
   final Dio _dio;
   late final void Function() _connectCallback;
 
-  ChatMessagesNotifier(this.roomId, this._dio) : super(const ChatMessagesState()) {
+  ChatMessagesNotifier(this.roomId, this._dio)
+    : super(const ChatMessagesState()) {
     _connectCallback = _registerListeners;
     _registerListeners();
     SocketService.instance.addConnectCallback(_connectCallback);
@@ -220,9 +242,7 @@ class ChatMessagesNotifier extends StateNotifier<ChatMessagesState> {
     // Avoid duplicates
     if (state.messages.any((m) => m.id == msg.id)) return;
 
-    state = state.copyWith(
-      messages: [...state.messages, msg],
-    );
+    state = state.copyWith(messages: [...state.messages, msg]);
   }
 
   void _onRead(dynamic data) {
@@ -231,16 +251,18 @@ class ChatMessagesNotifier extends StateNotifier<ChatMessagesState> {
 
     state = state.copyWith(
       messages: state.messages
-          .map((m) => ChatMessage(
-                id: m.id,
-                chatRoomId: m.chatRoomId,
-                senderType: m.senderType,
-                senderId: m.senderId,
-                content: m.content,
-                messageType: m.messageType,
-                isRead: true,
-                createdAt: m.createdAt,
-              ))
+          .map(
+            (m) => ChatMessage(
+              id: m.id,
+              chatRoomId: m.chatRoomId,
+              senderType: m.senderType,
+              senderId: m.senderId,
+              content: m.content,
+              messageType: m.messageType,
+              isRead: true,
+              createdAt: m.createdAt,
+            ),
+          )
           .toList(),
     );
   }
@@ -254,7 +276,10 @@ class ChatMessagesNotifier extends StateNotifier<ChatMessagesState> {
         params['cursor'] = state.nextCursor;
       }
 
-      final response = await _dio.get('/chat/rooms/$roomId/messages', queryParameters: params);
+      final response = await _dio.get(
+        '/chat/rooms/$roomId/messages',
+        queryParameters: params,
+      );
       final data = response.data as Map<String, dynamic>;
       final messages = (data['messages'] as List)
           .map((json) => ChatMessage.fromJson(json as Map<String, dynamic>))
@@ -299,8 +324,8 @@ class ChatMessagesNotifier extends StateNotifier<ChatMessagesState> {
 
 final chatMessagesProvider = StateNotifierProvider.autoDispose
     .family<ChatMessagesNotifier, ChatMessagesState, String>(
-  (ref, roomId) => ChatMessagesNotifier(roomId, ref.read(dioProvider)),
-);
+      (ref, roomId) => ChatMessagesNotifier(roomId, ref.read(dioProvider)),
+    );
 
 // ─── Unread Count (computed from room list) ─────────────
 

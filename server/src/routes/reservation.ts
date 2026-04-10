@@ -8,8 +8,9 @@ import { formatDateOnly, getKstDayOfWeek, hasKstTimePassed, parseDateOnly } from
 import { findFirstScheduleCompat, findFirstScheduleOverrideCompat, findScheduleOverridesCompat } from '../utils/schedule-access';
 import { decodeMemoFields, encodeMemoFields } from '../utils/memo-fields';
 import { isTimeRangeClosed } from '../utils/slot-blocking';
-import { findGeneratedSlot } from '../utils/slot-service';
+import { findGeneratedSlot, getAvailableSlots } from '../utils/slot-service';
 import { emitReservationCreated, emitReservationUpdated, emitReservationCancelled } from '../socket/emitters';
+import { shouldSendPushForType } from '../utils/notification-preferences';
 
 const router = Router();
 router.use(authMiddleware);
@@ -109,6 +110,8 @@ const createReservationSchema = z.object({
   coachId: z.string().uuid().optional(),
   quickMemo: z.string().optional(),
   memo: z.string().optional(),
+  manualTime: z.boolean().optional(),
+  force: z.boolean().optional(),
 });
 
 router.post('/', async (req: Request, res: Response) => {
@@ -170,17 +173,40 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
 
-    const matchedSlot = await findGeneratedSlot({
+    const generatedSlots = await getAvailableSlots({
       organizationId: orgId,
       date: body.date,
       coachId,
-      startTime: body.startTime,
-      endTime: body.endTime,
       includePast: true,
     });
-    if (!matchedSlot) {
-      res.status(409).json({ error: '실제 스케줄 슬롯에 맞는 시간만 예약할 수 있습니다' });
-      return;
+    const overlappingGeneratedSlots = generatedSlots.filter(
+      (slot) =>
+        !slot.blocked &&
+        isOverlappingTimeRange(
+          body.startTime,
+          body.endTime,
+          slot.startTime,
+          slot.endTime,
+        ),
+    );
+
+    if (body.manualTime) {
+      if (overlappingGeneratedSlots.length > 0 && body.force !== true) {
+        res.status(409).json({
+          error: '이미 개설되어 있는 시간과 겹칩니다. 그래도 추가할지 확인해주세요',
+          code: 'OPEN_SLOT_OVERLAP',
+        });
+        return;
+      }
+    } else {
+      const matchedSlot = overlappingGeneratedSlots.find(
+        (slot) =>
+          slot.startTime === body.startTime && slot.endTime === body.endTime,
+      ) ?? null;
+      if (!matchedSlot) {
+        res.status(409).json({ error: '실제 스케줄 슬롯에 맞는 시간만 예약할 수 있습니다' });
+        return;
+      }
     }
 
     // Determine maxCapacity from override or weekly schedule
@@ -217,16 +243,28 @@ router.post('/', async (req: Request, res: Response) => {
       return;
     }
 
-    if (maxCapacity != null) {
-      const booked = await prisma.reservation.count({
+    if (maxCapacity != null && !(body.manualTime && body.force === true)) {
+      const overlappingReservations = await prisma.reservation.findMany({
         where: {
           organizationId: orgId,
           coachId,
           date: targetDate,
-          startTime: body.startTime,
           status: { in: ['PENDING', 'CONFIRMED'] },
         },
+        select: {
+          startTime: true,
+          endTime: true,
+        },
       });
+
+      const booked = overlappingReservations.filter((reservation) =>
+        isOverlappingTimeRange(
+          body.startTime,
+          body.endTime,
+          reservation.startTime,
+          reservation.endTime,
+        ),
+      ).length;
 
       if (booked >= maxCapacity) {
         res.status(409).json({ error: '이 시간대는 정원이 가득 찼습니다' });
@@ -260,9 +298,15 @@ router.post('/', async (req: Request, res: Response) => {
     if (member?.memberAccountId) {
       const memberAccount = await prisma.memberAccount.findUnique({
         where: { id: member.memberAccountId },
-        select: { fcmToken: true },
+        select: { fcmToken: true, notificationPreferences: true },
       });
-      if (memberAccount?.fcmToken) {
+      if (
+        memberAccount?.fcmToken &&
+        shouldSendPushForType(
+          memberAccount.notificationPreferences,
+          'NEW_RESERVATION',
+        )
+      ) {
         sendPush(
           memberAccount.fcmToken,
           '새 예약 등록',
@@ -323,7 +367,7 @@ router.patch('/:id/status', async (req: Request, res: Response) => {
     if (existingReservation.member.memberAccountId) {
       const memberAccount = await prisma.memberAccount.findUnique({
         where: { id: existingReservation.member.memberAccountId },
-        select: { fcmToken: true },
+        select: { fcmToken: true, notificationPreferences: true },
       });
 
       let notificationTitle = '예약 상태 변경';
@@ -333,11 +377,22 @@ router.patch('/:id/status', async (req: Request, res: Response) => {
         notificationTitle = '예약 승인';
         notificationBody = `${existingReservation.member.name}님의 예약이 승인되었습니다`;
       } else if (status === 'CANCELLED') {
-        notificationTitle = '예약 취소';
-        notificationBody = `${existingReservation.member.name}님의 예약이 취소되었습니다`;
+        if (existingReservation.status === 'PENDING') {
+          notificationTitle = '예약 신청 거절';
+          notificationBody = `${existingReservation.member.name}님의 예약 신청이 거절되었습니다`;
+        } else {
+          notificationTitle = '예약 취소';
+          notificationBody = `${existingReservation.member.name}님의 예약이 취소되었습니다`;
+        }
       }
 
-      if (memberAccount?.fcmToken) {
+      if (
+        memberAccount?.fcmToken &&
+        shouldSendPushForType(
+          memberAccount.notificationPreferences,
+          'RESERVATION_STATUS_UPDATED',
+        )
+      ) {
         sendPush(
           memberAccount.fcmToken,
           notificationTitle,
@@ -362,6 +417,54 @@ const delayReservationSchema = z.object({
     .max(120)
     .refine((v) => v !== 0, { message: 'delayMinutes must not be zero' }),
   force: z.boolean().optional(),
+});
+
+const updateReservationMemoSchema = z.object({
+  quickMemo: z.string().max(100).optional(),
+  memo: z.string().max(2000).optional(),
+});
+
+router.patch('/:id/memo', async (req: Request, res: Response) => {
+  try {
+    const orgId = await getCurrentOrgId(req.user!.userId, req.header('x-organization-id') ?? undefined);
+    if (!orgId) { res.status(403).json({ error: 'No organization' }); return; }
+
+    const body = updateReservationMemoSchema.parse(req.body);
+    const existingReservation = await findReservationInOrg(req.params.id as string, orgId);
+    if (!existingReservation) {
+      res.status(404).json({ error: 'Reservation not found' });
+      return;
+    }
+
+    const memoFields = decodeMemoFields(existingReservation.memo);
+    const updated = await prisma.reservation.update({
+      where: { id: existingReservation.id },
+      data: {
+        memo: encodeMemoFields({
+          quickMemo: body.quickMemo ?? memoFields.quickMemo,
+          memo: body.memo ?? memoFields.memo,
+          delayMinutes: memoFields.delayMinutes,
+          originalStartTime: memoFields.originalStartTime,
+          originalEndTime: memoFields.originalEndTime,
+        }),
+      },
+      include: {
+        member: { select: { id: true, name: true, memberAccountId: true, memo: true } },
+        coach: { select: { id: true, name: true } },
+      },
+    });
+
+    const serialized = serializeReservation(updated);
+    emitReservationUpdated(orgId, serialized, existingReservation.member.memberAccountId);
+    res.json(serialized);
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: err.errors });
+      return;
+    }
+    console.error('Update reservation memo error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 router.patch('/:id/delay', async (req: Request, res: Response) => {
@@ -398,7 +501,7 @@ router.patch('/:id/delay', async (req: Request, res: Response) => {
     const blockedByOverride = closedOverrides.some((candidate: { type: string; startTime?: string | null; endTime?: string | null }) =>
       isTimeRangeClosed(candidate, newStartTime, newEndTime),
     );
-    if (blockedByOverride) {
+    if (!body.force && blockedByOverride) {
       res.status(409).json({ error: '미룬 시간이 예약 마감 구간과 겹칩니다' });
       return;
     }
@@ -412,14 +515,14 @@ router.patch('/:id/delay', async (req: Request, res: Response) => {
           isActive: true,
         });
 
-    if (!schedule) {
+    if (!schedule && !body.force) {
       res.status(409).json({ error: '해당 날짜에 적용 가능한 스케줄을 찾지 못했습니다' });
       return;
     }
 
-    const scheduleStart = (schedule.startTime ?? '') as string;
-    const scheduleEnd = (schedule.endTime ?? '') as string;
-    if (!scheduleStart || !scheduleEnd) {
+    const scheduleStart = (schedule?.startTime ?? '') as string;
+    const scheduleEnd = (schedule?.endTime ?? '') as string;
+    if ((!scheduleStart || !scheduleEnd) && !body.force) {
       res.status(409).json({ error: '해당 날짜에 적용 가능한 스케줄을 찾지 못했습니다' });
       return;
     }
@@ -427,7 +530,7 @@ router.patch('/:id/delay', async (req: Request, res: Response) => {
     const scheduleContainsRange =
       !isOverlappingTimeRange(newStartTime, newEndTime, '00:00', scheduleStart) &&
       !isOverlappingTimeRange(newStartTime, newEndTime, scheduleEnd, '24:00');
-    if (!scheduleContainsRange) {
+    if (!body.force && !scheduleContainsRange) {
       res.status(409).json({ error: '미룬 시간이 코치 가용 시간 범위를 벗어납니다' });
       return;
     }
@@ -483,9 +586,15 @@ router.patch('/:id/delay', async (req: Request, res: Response) => {
     if (existingReservation.member.memberAccountId) {
       const memberAccount = await prisma.memberAccount.findUnique({
         where: { id: existingReservation.member.memberAccountId },
-        select: { fcmToken: true },
+        select: { fcmToken: true, notificationPreferences: true },
       });
-      if (memberAccount?.fcmToken) {
+      if (
+        memberAccount?.fcmToken &&
+        shouldSendPushForType(
+          memberAccount.notificationPreferences,
+          'RESERVATION_DELAYED',
+        )
+      ) {
         const absMinutes = Math.abs(body.delayMinutes);
         const direction = body.delayMinutes > 0 ? '미뤄져' : '앞당겨져';
         sendPush(

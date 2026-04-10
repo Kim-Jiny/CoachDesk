@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/api_client.dart';
+import '../../core/fcm_service.dart';
 import '../../core/theme.dart';
 import '../../models/member_booking.dart';
 import '../../models/package.dart';
@@ -24,16 +25,36 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
   List<MemberPackage> _packages = [];
   bool _isLoadingReservations = false;
   bool _isLoadingPackages = false;
+  AppLifecycleListener? _lifecycleListener;
 
   @override
   void initState() {
     super.initState();
+    _lifecycleListener = AppLifecycleListener(onResume: _handleResume);
+    FcmService.addReservationSyncListener(_handleReservationSync);
     Future.microtask(() {
       ref.read(memberAuthProvider.notifier).fetchMyClasses();
       ref.read(chatRoomListProvider.notifier).fetchRooms();
       _loadReservations();
       _loadPackages();
     });
+  }
+
+  @override
+  void dispose() {
+    FcmService.removeReservationSyncListener(_handleReservationSync);
+    _lifecycleListener?.dispose();
+    super.dispose();
+  }
+
+  void _handleResume() {
+    if (!mounted) return;
+    _loadReservations();
+  }
+
+  void _handleReservationSync() {
+    if (!mounted) return;
+    _loadReservations();
   }
 
   Future<void> _openChatWithCoach(
@@ -56,9 +77,7 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
 
     if (!mounted) return;
     if (room == null) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('채팅방을 열 수 없습니다')),
-      );
+      messenger.showSnackBar(const SnackBar(content: Text('채팅방을 열 수 없습니다')));
       return;
     }
 
@@ -398,9 +417,21 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
                                 .logout();
                             if (!context.mounted) return;
                             context.go('/auth-select');
+                          } else if (value == 'notification_settings') {
+                            context.push('/member/settings/notifications');
                           }
                         },
                         itemBuilder: (_) => [
+                          const PopupMenuItem(
+                            value: 'notification_settings',
+                            child: Row(
+                              children: [
+                                Icon(Icons.notifications_outlined, size: 20),
+                                SizedBox(width: 8),
+                                Text('앱 설정'),
+                              ],
+                            ),
+                          ),
                           const PopupMenuItem(
                             value: 'switch_admin',
                             child: Row(
@@ -928,10 +959,7 @@ class _ClassCard extends StatelessWidget {
                     label: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(
-                          coach.name,
-                          style: const TextStyle(fontSize: 13),
-                        ),
+                        Text(coach.name, style: const TextStyle(fontSize: 13)),
                         const SizedBox(width: 4),
                         Icon(
                           Icons.chat_bubble_outline,

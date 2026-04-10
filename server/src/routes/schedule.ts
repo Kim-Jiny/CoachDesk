@@ -40,6 +40,7 @@ const createScheduleSchema = z.object({
   slotDuration: z.number().min(15).default(60),
   breakMinutes: z.number().min(0).max(180).default(0),
   maxCapacity: z.number().min(1).default(1),
+  isPublic: z.boolean().default(false),
 });
 
 router.post('/', async (req: Request, res: Response) => {
@@ -72,6 +73,7 @@ router.post('/', async (req: Request, res: Response) => {
           slotDuration: body.slotDuration,
           breakMinutes: body.breakMinutes,
           maxCapacity: body.maxCapacity,
+          isPublic: body.isPublic,
         },
       })),
     );
@@ -101,6 +103,7 @@ const updateScheduleSchema = z.object({
   slotDuration: z.number().min(15).optional(),
   breakMinutes: z.number().min(0).max(180).optional(),
   maxCapacity: z.number().min(1).optional(),
+  isPublic: z.boolean().optional(),
 });
 
 // ─── Update Schedule ───────────────────────────────────────
@@ -162,12 +165,13 @@ router.delete('/:id', async (req: Request, res: Response) => {
 const createOverrideSchema = z.object({
   coachId: z.string().uuid().optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  type: z.enum(['OPEN', 'CLOSED']),
+  type: z.enum(['OPEN', 'CLOSED', 'VISIBLE', 'HIDDEN']),
   startTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
   endTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
   slotDuration: z.number().min(15).optional(),
   breakMinutes: z.number().min(0).max(180).optional(),
   maxCapacity: z.number().min(1).optional(),
+  isPublic: z.boolean().optional(),
 });
 
 router.post('/overrides', async (req: Request, res: Response) => {
@@ -184,8 +188,9 @@ router.post('/overrides', async (req: Request, res: Response) => {
       return;
     }
 
-    if (body.type === 'OPEN' && (!body.startTime || !body.endTime)) {
-      res.status(400).json({ error: 'OPEN override requires startTime and endTime' });
+    if ((body.type === 'OPEN' || body.type === 'VISIBLE' || body.type === 'HIDDEN') &&
+        (!body.startTime || !body.endTime)) {
+      res.status(400).json({ error: '선택한 오버라이드는 시작시간과 종료시간이 필요합니다' });
       return;
     }
 
@@ -205,6 +210,13 @@ router.post('/overrides', async (req: Request, res: Response) => {
         slotDuration: body.slotDuration,
         breakMinutes: body.breakMinutes,
         maxCapacity: body.maxCapacity,
+        isPublic: body.type === 'OPEN'
+            ? (body.isPublic ?? false)
+            : body.type === 'VISIBLE'
+            ? true
+            : body.type === 'HIDDEN'
+            ? false
+            : body.isPublic,
       },
     });
 
@@ -240,6 +252,7 @@ router.get('/overrides', async (req: Request, res: Response) => {
       ...override,
       date: formatDateOnly(override.date),
       breakMinutes: (override as any).breakMinutes,
+      isPublic: (override as any).isPublic,
     })));
   } catch (err) {
     console.error('List overrides error:', err);

@@ -83,14 +83,21 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
   void _loadReservations() {
     final start = DateTime(_focusedDay.year, _focusedDay.month, 1);
     final end = DateTime(_focusedDay.year, _focusedDay.month + 1, 0);
-    ref.read(reservationProvider.notifier).fetchReservations(
-      startDate: DateFormat('yyyy-MM-dd').format(start),
-      endDate: DateFormat('yyyy-MM-dd').format(end),
-    );
+    ref
+        .read(reservationProvider.notifier)
+        .fetchReservations(
+          startDate: DateFormat('yyyy-MM-dd').format(start),
+          endDate: DateFormat('yyyy-MM-dd').format(end),
+        );
   }
 
-  Future<void> _changeReservationStatus(Reservation reservation, String status) async {
-    final success = await ref.read(reservationProvider.notifier).updateStatus(reservation.id, status);
+  Future<void> _changeReservationStatus(
+    Reservation reservation,
+    String status,
+  ) async {
+    final success = await ref
+        .read(reservationProvider.notifier)
+        .updateStatus(reservation.id, status);
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -98,8 +105,8 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
         content: Text(
           success
               ? status == 'CONFIRMED'
-                  ? '예약이 승인되었습니다'
-                  : '예약 상태가 변경되었습니다'
+                    ? '예약이 승인되었습니다'
+                    : '예약 상태가 변경되었습니다'
               : '예약 상태 변경에 실패했습니다',
         ),
         behavior: SnackBarBehavior.floating,
@@ -116,18 +123,14 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     final deltaMinutes = await _showTimeAdjustDialog(reservation);
     if (deltaMinutes == null || !mounted) return;
 
-    final conflict = _findConflictingReservation(reservation, deltaMinutes);
+    final warnings = _buildTimeAdjustmentWarnings(reservation, deltaMinutes);
     var force = false;
-    if (conflict != null) {
+    if (warnings.isNotEmpty) {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('겹치는 수업이 있어요'),
-          content: Text(
-            '${conflict.startTime} - ${conflict.endTime} '
-            '${conflict.memberName ?? '다른 수업'}과(와) 겹칩니다.\n'
-            '그래도 시간을 조정하시겠어요?',
-          ),
+          title: const Text('확인이 필요한 변경이에요'),
+          content: Text('${warnings.join('\n\n')}\n\n그래도 시간을 조정하시겠어요?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
@@ -157,20 +160,59 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
       if (!mounted) return;
       final absMinutes = deltaMinutes.abs();
       final direction = deltaMinutes > 0 ? '미뤘습니다' : '앞당겼습니다';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('예약을 $absMinutes분 $direction')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('예약을 $absMinutes분 $direction')));
     } on DioException catch (e) {
       if (!mounted) return;
       final message =
           e.response?.data?['error'] as String? ?? '예약 시간 조정에 실패했습니다';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('예약 시간 조정에 실패했습니다')),
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('예약 시간 조정에 실패했습니다')));
+    }
+  }
+
+  List<String> _buildTimeAdjustmentWarnings(
+    Reservation reservation,
+    int deltaMinutes,
+  ) {
+    final warnings = <String>[];
+    final newStart = _shiftTime(reservation.startTime, deltaMinutes);
+    final newEnd = _shiftTime(reservation.endTime, deltaMinutes);
+    if (newStart == null || newEnd == null) {
+      return warnings;
+    }
+
+    final conflict = _findConflictingReservation(reservation, deltaMinutes);
+    if (conflict != null) {
+      warnings.add(
+        '${conflict.startTime} - ${conflict.endTime} ${conflict.memberName ?? '다른 수업'}과 겹칩니다.',
       );
     }
+
+    final relatedSlots = _slots.where((slot) {
+      if (slot['coachId'] != reservation.coachId) return false;
+      return _overlapsTime(
+        newStart,
+        newEnd,
+        slot['startTime'] as String,
+        slot['endTime'] as String,
+      );
+    }).toList();
+
+    if (relatedSlots.isEmpty) {
+      warnings.add('조정한 시간이 현재 가용시간 범위를 벗어납니다.');
+    } else if (relatedSlots.any((slot) => slot['blocked'] == true)) {
+      warnings.add('조정한 시간이 예약 마감 처리된 구간과 겹칩니다.');
+    }
+
+    return warnings;
   }
 
   Future<int?> _showTimeAdjustDialog(Reservation reservation) {
@@ -191,10 +233,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                 children: [
                   Text(
                     '현재 ${reservation.startTime} - ${reservation.endTime}',
-                    style: TextStyle(
-                      color: Colors.grey.shade600,
-                      fontSize: 13,
-                    ),
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
                   ),
                   const SizedBox(height: 16),
                   SegmentedButton<bool>(
@@ -306,9 +345,8 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) {
-        final visibleMemo = reservation.quickMemo?.trim().isNotEmpty == true
-            ? reservation.quickMemo!
-            : reservation.memberQuickMemo;
+        final reservationQuickMemo = reservation.quickMemo?.trim();
+        final memberQuickMemo = reservation.memberQuickMemo?.trim();
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
@@ -320,7 +358,9 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                   children: [
                     CircleAvatar(
                       radius: 22,
-                      backgroundColor: _timelineStatusColor(reservation.status).withValues(alpha: 0.1),
+                      backgroundColor: _timelineStatusColor(
+                        reservation.status,
+                      ).withValues(alpha: 0.1),
                       child: Text(
                         reservation.memberName?[0] ?? '?',
                         style: TextStyle(
@@ -336,7 +376,10 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                         children: [
                           Text(
                             reservation.memberName ?? '예약',
-                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                           const SizedBox(height: 4),
                           Text(
@@ -350,13 +393,30 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                   ],
                 ),
                 const SizedBox(height: 16),
-                _ReservationInfoRow(label: '상태', value: _timelineStatusLabel(reservation.status)),
-                if (reservation.coachName != null && reservation.coachName!.isNotEmpty)
-                  _ReservationInfoRow(label: '코치', value: reservation.coachName!),
-                if (visibleMemo != null && visibleMemo.isNotEmpty)
-                  _ReservationInfoRow(label: '메모', value: visibleMemo),
-                if (reservation.memo != null && reservation.memo!.trim().isNotEmpty)
-                  _ReservationInfoRow(label: '상세 메모', value: reservation.memo!.trim()),
+                _ReservationInfoRow(
+                  label: '상태',
+                  value: _timelineStatusLabel(reservation.status),
+                ),
+                if (reservation.coachName != null &&
+                    reservation.coachName!.isNotEmpty)
+                  _ReservationInfoRow(
+                    label: '코치',
+                    value: reservation.coachName!,
+                  ),
+                if (memberQuickMemo != null && memberQuickMemo.isNotEmpty)
+                  _ReservationInfoRow(label: '회원 메모', value: memberQuickMemo),
+                if (reservationQuickMemo != null &&
+                    reservationQuickMemo.isNotEmpty)
+                  _ReservationInfoRow(
+                    label: '예약 메모',
+                    value: reservationQuickMemo,
+                  ),
+                if (reservation.memo != null &&
+                    reservation.memo!.trim().isNotEmpty)
+                  _ReservationInfoRow(
+                    label: '상세 메모',
+                    value: reservation.memo!.trim(),
+                  ),
                 if (reservation.isMemberBooked)
                   _ReservationInfoRow(label: '예약 방식', value: '회원 예약'),
                 if (reservation.status == 'CONFIRMED' && !canComplete)
@@ -381,18 +441,34 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                 if (reservation.status == 'PENDING') ...[
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.check_circle_outline, color: AppTheme.successColor),
+                    leading: const Icon(
+                      Icons.check_circle_outline,
+                      color: AppTheme.successColor,
+                    ),
                     title: const Text('예약 승인'),
                     onTap: () => Navigator.pop(context, 'approve'),
                   ),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.cancel_outlined, color: AppTheme.errorColor),
+                    leading: const Icon(
+                      Icons.cancel_outlined,
+                      color: AppTheme.errorColor,
+                    ),
                     title: const Text('예약 거절'),
                     onTap: () => Navigator.pop(context, 'reject'),
                   ),
                 ] else if (reservation.status == 'CONFIRMED') ...[
                   const SizedBox(height: 4),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(
+                      Icons.edit_note_rounded,
+                      color: Colors.orange,
+                    ),
+                    title: const Text('예약 메모 추가/수정'),
+                    subtitle: const Text('짧은 메모와 상세 메모를 남길 수 있어요'),
+                    onTap: () => Navigator.pop(context, 'edit_memo'),
+                  ),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(
@@ -407,7 +483,9 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                     contentPadding: EdgeInsets.zero,
                     leading: Icon(
                       Icons.task_alt_rounded,
-                      color: canComplete ? AppTheme.primaryColor : Colors.grey.shade400,
+                      color: canComplete
+                          ? AppTheme.primaryColor
+                          : Colors.grey.shade400,
                     ),
                     title: Text(
                       '수업 완료 처리',
@@ -415,9 +493,13 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                         color: canComplete ? null : Colors.grey.shade500,
                       ),
                     ),
-                    subtitle: canComplete ? null : const Text('아직 종료 시간이 지나지 않았습니다'),
+                    subtitle: canComplete
+                        ? null
+                        : const Text('아직 종료 시간이 지나지 않았습니다'),
                     enabled: canComplete,
-                    onTap: canComplete ? () => Navigator.pop(context, 'complete') : null,
+                    onTap: canComplete
+                        ? () => Navigator.pop(context, 'complete')
+                        : null,
                   ),
                 ],
               ],
@@ -437,9 +519,15 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     } else if (action == 'adjust') {
       if (!mounted) return;
       await _adjustReservationTime(reservation);
+    } else if (action == 'edit_memo') {
+      if (!mounted) return;
+      await _editReservationMemo(reservation);
     } else if (action == 'complete') {
       if (!mounted) return;
-      final result = await context.push('/reservations/complete', extra: reservation);
+      final result = await context.push(
+        '/reservations/complete',
+        extra: reservation,
+      );
       if (!mounted) return;
       if (result == true) {
         _loadReservations();
@@ -466,7 +554,10 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
               children: [
                 Text(
                   '${first.startTime} - ${first.endTime}',
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 6),
                 Text(
@@ -481,9 +572,10 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                     separatorBuilder: (_, _) => const Divider(height: 1),
                     itemBuilder: (context, index) {
                       final reservation = reservations[index];
-                      final visibleMemo = reservation.quickMemo?.trim().isNotEmpty == true
-                          ? reservation.quickMemo!
-                          : reservation.memberQuickMemo;
+                      final reservationQuickMemo = reservation.quickMemo
+                          ?.trim();
+                      final memberQuickMemo = reservation.memberQuickMemo
+                          ?.trim();
                       return ListTile(
                         contentPadding: EdgeInsets.zero,
                         onTap: () {
@@ -492,7 +584,9 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                         },
                         leading: CircleAvatar(
                           radius: 18,
-                          backgroundColor: _timelineStatusColor(reservation.status).withValues(alpha: 0.1),
+                          backgroundColor: _timelineStatusColor(
+                            reservation.status,
+                          ).withValues(alpha: 0.1),
                           child: Text(
                             reservation.memberName?[0] ?? '?',
                             style: TextStyle(
@@ -511,11 +605,27 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            if (visibleMemo != null && visibleMemo.isNotEmpty)
+                            if (memberQuickMemo != null &&
+                                memberQuickMemo.isNotEmpty)
                               Padding(
                                 padding: const EdgeInsets.only(top: 2),
                                 child: Text(
-                                  visibleMemo,
+                                  '회원: $memberQuickMemo',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.teal.shade700,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            if (reservationQuickMemo != null &&
+                                reservationQuickMemo.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(
+                                  '예약: $reservationQuickMemo',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
@@ -560,14 +670,16 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     try {
       final dio = ref.read(dioProvider);
       final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDay);
-      final response = await dio.get('/schedules/slots', queryParameters: {
-        'date': dateStr,
-        'includePast': true,
-      });
+      final response = await dio.get(
+        '/schedules/slots',
+        queryParameters: {'date': dateStr, 'includePast': true},
+      );
       setState(() {
         final data = response.data;
         if (data is List) {
-          _slots = data.map((item) => Map<String, dynamic>.from(item as Map)).toList();
+          _slots = data
+              .map((item) => Map<String, dynamic>.from(item as Map))
+              .toList();
         } else if (data is Map<String, dynamic> && data['slots'] is List) {
           _slots = (data['slots'] as List)
               .map((item) => Map<String, dynamic>.from(item as Map))
@@ -581,7 +693,8 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
       setState(() {
         _slots = [];
         _slotsLoading = false;
-        _slotLoadError = e.response?.data?['error'] as String? ?? '스케줄 슬롯을 불러오지 못했습니다';
+        _slotLoadError =
+            e.response?.data?['error'] as String? ?? '스케줄 슬롯을 불러오지 못했습니다';
       });
     } catch (_) {
       setState(() {
@@ -592,8 +705,98 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     }
   }
 
+  Future<void> _editReservationMemo(Reservation reservation) async {
+    final quickMemoController = TextEditingController(
+      text: reservation.quickMemo ?? '',
+    );
+    final detailMemoController = TextEditingController(
+      text: reservation.memo ?? '',
+    );
+
+    final shouldSave = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('예약 메모 수정'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (reservation.memberQuickMemo?.trim().isNotEmpty == true) ...[
+                Text(
+                  '회원 메모: ${reservation.memberQuickMemo!.trim()}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.teal.shade700,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+              TextField(
+                controller: quickMemoController,
+                maxLength: 100,
+                decoration: const InputDecoration(
+                  labelText: '짧은 메모',
+                  hintText: '스케줄 탭에 바로 보일 메모',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: detailMemoController,
+                minLines: 3,
+                maxLines: 5,
+                maxLength: 2000,
+                decoration: const InputDecoration(
+                  labelText: '상세 메모',
+                  hintText: '눌러서 볼 상세 메모',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('저장'),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldSave != true || !mounted) return;
+
+    final success = await ref
+        .read(reservationProvider.notifier)
+        .updateMemo(
+          reservation.id,
+          quickMemo: quickMemoController.text.trim(),
+          memo: detailMemoController.text.trim(),
+        );
+
+    if (!mounted) return;
+
+    if (success) {
+      _loadReservations();
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('예약 메모를 저장했습니다')));
+    } else {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('예약 메모 저장에 실패했습니다')));
+    }
+  }
+
   Future<void> _showEmptySlotActions(Map<String, dynamic> slot) async {
     final isBlocked = slot['blocked'] == true;
+    final isPublic = slot['isPublic'] == true;
     final action = await showModalBottomSheet<String>(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -608,7 +811,10 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
             children: [
               Text(
                 '${DateFormat('M월 d일 (E)', 'ko').format(_selectedDay)} ${slot['startTime']} - ${slot['endTime']}',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const SizedBox(height: 6),
               Text(
@@ -619,14 +825,34 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
               if (!isBlocked) ...[
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.person_add_alt_rounded, color: AppTheme.primaryColor),
+                  leading: Icon(
+                    isPublic
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined,
+                    color: Colors.blue,
+                  ),
+                  title: Text(isPublic ? '회원에게 비공개' : '회원에게 공개'),
+                  subtitle: Text(
+                    isPublic ? '이 시간만 회원 앱에서 숨깁니다' : '이 시간만 회원 앱에서 보이게 합니다',
+                  ),
+                  onTap: () => Navigator.pop(context, 'toggle_visibility'),
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(
+                    Icons.person_add_alt_rounded,
+                    color: AppTheme.primaryColor,
+                  ),
                   title: const Text('회원으로 예약 채워넣기'),
                   subtitle: const Text('등록된 회원을 선택해 바로 예약을 만들어요'),
                   onTap: () => Navigator.pop(context, 'reserve'),
                 ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.block_rounded, color: AppTheme.errorColor),
+                  leading: const Icon(
+                    Icons.block_rounded,
+                    color: AppTheme.errorColor,
+                  ),
                   title: const Text('예약 마감 처리'),
                   subtitle: const Text('이 시간대를 더 이상 예약할 수 없게 막아요'),
                   onTap: () => Navigator.pop(context, 'close'),
@@ -634,7 +860,10 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
               ] else ...[
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.lock_open_rounded, color: AppTheme.successColor),
+                  leading: const Icon(
+                    Icons.lock_open_rounded,
+                    color: AppTheme.successColor,
+                  ),
                   title: const Text('예약 마감 해제'),
                   subtitle: const Text('막아둔 시간대를 다시 예약 가능하게 열어요'),
                   onTap: () => Navigator.pop(context, 'reopen'),
@@ -649,16 +878,24 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     if (!mounted || action == null) return;
 
     if (action == 'reserve') {
-      final result = await context.push('/reservations/new', extra: {
-        'date': DateFormat('yyyy-MM-dd').format(_selectedDay),
-        'startTime': slot['startTime'],
-        'endTime': slot['endTime'],
-        'coachId': slot['coachId'],
-      });
+      final result = await context.push(
+        '/reservations/new',
+        extra: {
+          'date': DateFormat('yyyy-MM-dd').format(_selectedDay),
+          'startTime': slot['startTime'],
+          'endTime': slot['endTime'],
+          'coachId': slot['coachId'],
+        },
+      );
       if (result == true) {
         _loadReservations();
         _loadSlots();
       }
+      return;
+    }
+
+    if (action == 'toggle_visibility') {
+      await _toggleSlotVisibility(slot);
       return;
     }
 
@@ -669,6 +906,54 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
 
     if (action == 'reopen') {
       await _reopenSlot(slot);
+    }
+  }
+
+  Future<void> _toggleSlotVisibility(Map<String, dynamic> slot) async {
+    final dio = ref.read(dioProvider);
+    final visibilityOverrideId = slot['visibilityOverrideId'] as String?;
+    final baseIsPublic = slot['baseIsPublic'] == true;
+
+    try {
+      if (visibilityOverrideId != null && visibilityOverrideId.isNotEmpty) {
+        await dio.delete('/schedules/overrides/$visibilityOverrideId');
+      } else {
+        await dio.post(
+          '/schedules/overrides',
+          data: {
+            'coachId': slot['coachId'],
+            'date': DateFormat('yyyy-MM-dd').format(_selectedDay),
+            'type': baseIsPublic ? 'HIDDEN' : 'VISIBLE',
+            'startTime': slot['startTime'],
+            'endTime': slot['endTime'],
+          },
+        );
+      }
+      await _refreshAll();
+      if (!mounted) return;
+      final changedToPublic =
+          visibilityOverrideId != null && visibilityOverrideId.isNotEmpty
+          ? baseIsPublic
+          : !baseIsPublic;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            changedToPublic ? '이 시간대를 회원에게 공개했습니다' : '이 시간대를 회원에게 비공개했습니다',
+          ),
+        ),
+      );
+    } on DioException catch (e) {
+      if (!mounted) return;
+      final message =
+          e.response?.data?['error'] as String? ?? '공개 상태 변경에 실패했습니다';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('공개 상태 변경에 실패했습니다')));
     }
   }
 
@@ -727,27 +1012,33 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
 
     try {
       final dio = ref.read(dioProvider);
-      await dio.post('/schedules/overrides', data: {
-        'coachId': slot['coachId'],
-        'date': DateFormat('yyyy-MM-dd').format(_selectedDay),
-        'type': 'CLOSED',
-        'startTime': slot['startTime'],
-        'endTime': slot['endTime'],
-      });
+      await dio.post(
+        '/schedules/overrides',
+        data: {
+          'coachId': slot['coachId'],
+          'date': DateFormat('yyyy-MM-dd').format(_selectedDay),
+          'type': 'CLOSED',
+          'startTime': slot['startTime'],
+          'endTime': slot['endTime'],
+        },
+      );
       await _refreshAll();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('해당 시간대를 예약 마감 처리했습니다')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('해당 시간대를 예약 마감 처리했습니다')));
     } on DioException catch (e) {
       if (!mounted) return;
-      final message = e.response?.data?['error'] as String? ?? '예약 마감 처리에 실패했습니다';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      final message =
+          e.response?.data?['error'] as String? ?? '예약 마감 처리에 실패했습니다';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('예약 마감 처리에 실패했습니다')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('예약 마감 처리에 실패했습니다')));
     }
   }
 
@@ -755,9 +1046,9 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     final overrideId = slot['blockedOverrideId'] as String?;
     if (overrideId == null || overrideId.isEmpty) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('마감 해제 정보를 찾지 못했습니다')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('마감 해제 정보를 찾지 못했습니다')));
       return;
     }
 
@@ -766,28 +1057,33 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
       await dio.delete('/schedules/overrides/$overrideId');
       await _refreshAll();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('예약 마감을 해제했습니다')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('예약 마감을 해제했습니다')));
     } on DioException catch (e) {
       if (!mounted) return;
-      final message = e.response?.data?['error'] as String? ?? '예약 마감 해제에 실패했습니다';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      final message =
+          e.response?.data?['error'] as String? ?? '예약 마감 해제에 실패했습니다';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('예약 마감 해제에 실패했습니다')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('예약 마감 해제에 실패했습니다')));
     }
   }
 
   void _loadOverrides() {
     final start = DateTime(_focusedDay.year, _focusedDay.month, 1);
     final end = DateTime(_focusedDay.year, _focusedDay.month + 1, 0);
-    ref.read(scheduleOverrideProvider.notifier).fetchOverrides(
-      startDate: DateFormat('yyyy-MM-dd').format(start),
-      endDate: DateFormat('yyyy-MM-dd').format(end),
-    );
+    ref
+        .read(scheduleOverrideProvider.notifier)
+        .fetchOverrides(
+          startDate: DateFormat('yyyy-MM-dd').format(start),
+          endDate: DateFormat('yyyy-MM-dd').format(end),
+        );
   }
 
   void _showOverrideSheet() {
@@ -824,7 +1120,11 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
 
   bool _isPastTime(String startTime) {
     final now = DateTime.now();
-    final selected = DateTime(_selectedDay.year, _selectedDay.month, _selectedDay.day);
+    final selected = DateTime(
+      _selectedDay.year,
+      _selectedDay.month,
+      _selectedDay.day,
+    );
     final today = DateTime(now.year, now.month, now.day);
     if (selected.isBefore(today)) return true;
     if (selected.isAfter(today)) return false;
@@ -847,11 +1147,21 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     final dayReservations = reservationState.reservations.where((r) {
       return DateFormat('yyyy-MM-dd').format(r.date) == selectedDateStr;
     }).toList();
-    final pendingCount = dayReservations.where((r) => r.status == 'PENDING').length;
-    final confirmedCount = dayReservations.where((r) => r.status == 'CONFIRMED').length;
-    final completedCount = dayReservations.where((r) => r.status == 'COMPLETED').length;
-    final availableSlotCount = _slots.where((slot) => slot['available'] == true).length;
-    final pastSlotCount = _slots.where((slot) => _isPastTime(slot['startTime'] as String)).length;
+    final pendingCount = dayReservations
+        .where((r) => r.status == 'PENDING')
+        .length;
+    final confirmedCount = dayReservations
+        .where((r) => r.status == 'CONFIRMED')
+        .length;
+    final completedCount = dayReservations
+        .where((r) => r.status == 'COMPLETED')
+        .length;
+    final availableSlotCount = _slots
+        .where((slot) => slot['available'] == true)
+        .length;
+    final pastSlotCount = _slots
+        .where((slot) => _isPastTime(slot['startTime'] as String))
+        .length;
 
     return Scaffold(
       appBar: AppBar(
@@ -943,8 +1253,14 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                 ),
-                leftChevronIcon: Icon(Icons.chevron_left_rounded, color: Colors.grey.shade600),
-                rightChevronIcon: Icon(Icons.chevron_right_rounded, color: Colors.grey.shade600),
+                leftChevronIcon: Icon(
+                  Icons.chevron_left_rounded,
+                  color: Colors.grey.shade600,
+                ),
+                rightChevronIcon: Icon(
+                  Icons.chevron_right_rounded,
+                  color: Colors.grey.shade600,
+                ),
               ),
               daysOfWeekStyle: DaysOfWeekStyle(
                 weekdayStyle: TextStyle(
@@ -986,7 +1302,9 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                       children: [
                         HeaderChip(
                           label: '전체 예약 ${dayReservations.length}건',
-                          backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.08),
+                          backgroundColor: AppTheme.primaryColor.withValues(
+                            alpha: 0.08,
+                          ),
                           foregroundColor: AppTheme.primaryColor,
                         ),
                         const SizedBox(width: 8),
@@ -1004,7 +1322,9 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                         const SizedBox(width: 8),
                         HeaderChip(
                           label: '남은 슬롯 $availableSlotCount개',
-                          backgroundColor: AppTheme.successColor.withValues(alpha: 0.08),
+                          backgroundColor: AppTheme.successColor.withValues(
+                            alpha: 0.08,
+                          ),
                           foregroundColor: AppTheme.successColor,
                         ),
                         const SizedBox(width: 8),
@@ -1025,15 +1345,24 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                         GestureDetector(
                           onTap: _showOverrideSheet,
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
                             decoration: BoxDecoration(
-                              color: AppTheme.warningColor.withValues(alpha: 0.1),
+                              color: AppTheme.warningColor.withValues(
+                                alpha: 0.1,
+                              ),
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.edit_calendar_rounded, size: 14, color: AppTheme.warningColor),
+                                Icon(
+                                  Icons.edit_calendar_rounded,
+                                  size: 14,
+                                  color: AppTheme.warningColor,
+                                ),
                                 const SizedBox(width: 4),
                                 Text(
                                   '스케줄 관리',
@@ -1075,155 +1404,182 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
             ),
           ),
           const SizedBox(height: 4),
- 
+
           // Integrated timeline: slots + reservations
           Expanded(
             child: RefreshIndicator(
               onRefresh: _refreshAll,
               child: (reservationState.isLoading || _slotsLoading)
                   ? const ShimmerLoading(style: ShimmerStyle.card, itemCount: 3)
-                  : Builder(builder: (context) {
-                      // Build merged timeline items
-                      final timelineItems = <_TimelineItem>[];
-                      final reservationMap = <String, List<Reservation>>{};
-                      for (final r in dayReservations) {
-                        final key = '${r.coachId}|${r.startTime}';
-                        reservationMap.putIfAbsent(key, () => []).add(r);
-                      }
-
-                      final matchedKeys = <String>{};
-
-                      // Add slots (with or without reservation)
-                      for (final slot in _slots) {
-                        final key = '${slot['coachId']}|${slot['startTime']}';
-                        final reservations = reservationMap[key];
-                        if (reservations != null && reservations.isNotEmpty) {
-                          matchedKeys.add(key);
-                          timelineItems.add(_TimelineItem(
-                            startTime: reservations.first.startTime,
-                            reservations: reservations,
-                            slot: slot,
-                          ));
-                        } else {
-                          timelineItems.add(_TimelineItem(
-                            startTime: slot['startTime'] as String,
-                            slot: slot,
-                          ));
+                  : Builder(
+                      builder: (context) {
+                        // Build merged timeline items
+                        final timelineItems = <_TimelineItem>[];
+                        final reservationMap = <String, List<Reservation>>{};
+                        for (final r in dayReservations) {
+                          final key = '${r.coachId}|${r.startTime}';
+                          reservationMap.putIfAbsent(key, () => []).add(r);
                         }
-                      }
 
-                      // Add reservations not matched to any slot
-                      for (final entry in reservationMap.entries) {
-                        final key = entry.key;
-                        if (!matchedKeys.contains(key)) {
-                          final reservations = entry.value;
-                          timelineItems.add(_TimelineItem(
-                            startTime: reservations.first.startTime,
-                            reservations: reservations,
-                          ));
-                        }
-                      }
+                        final matchedKeys = <String>{};
 
-                      // Sort by startTime
-                      timelineItems.sort((a, b) => a.startTime.compareTo(b.startTime));
-
-                      final filteredItems = timelineItems.where((item) {
-                        final isPast = _isPastTime(item.startTime);
-                        return switch (_filter) {
-                          _TimelineFilter.all => true,
-                          _TimelineFilter.reservations => item.hasReservations,
-                          _TimelineFilter.open => item.slot != null && item.slot!['available'] == true,
-                          _TimelineFilter.past => isPast,
-                        };
-                      }).toList();
-                      final emptyStateTitle = switch (_filter) {
-                        _TimelineFilter.all => '표시할 타임라인이 없습니다',
-                        _TimelineFilter.reservations => '예약된 타임이 없습니다',
-                        _TimelineFilter.open => '남아 있는 빈 타임이 없습니다',
-                        _TimelineFilter.past => '지난 타임이 없습니다',
-                      };
-                      final emptyStateMessage = switch (_filter) {
-                        _TimelineFilter.all => '선택한 날짜에 표시할 일정이 없습니다.\n스케줄 설정이나 예외 일정을 확인해보세요.',
-                        _TimelineFilter.reservations => '이 날짜에는 예약되거나 신청된 수업이 없습니다.',
-                        _TimelineFilter.open => '현재 남아 있는 예약 가능 타임이 없습니다.\n다른 날짜를 보거나 정원을 확인해보세요.',
-                        _TimelineFilter.past => '선택한 날짜에는 지난 시간대가 없습니다.',
-                      };
-
-                      if (_slotLoadError != null && filteredItems.isEmpty) {
-                        return ListView(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
-                          children: [
-                            ScheduleStateCard(
-                              icon: Icons.cloud_off_rounded,
-                              iconColor: AppTheme.errorColor,
-                              title: '스케줄을 불러오지 못했습니다',
-                              message: _slotLoadError!,
-                              actionLabel: '다시 시도',
-                              onAction: _refreshAll,
-                            ),
-                          ],
-                        );
-                      }
-
-                      if (filteredItems.isEmpty) {
-                        return ListView(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
-                          children: [
-                            ScheduleStateCard(
-                              icon: Icons.event_busy_rounded,
-                              title: emptyStateTitle,
-                              message: emptyStateMessage,
-                              actionLabel: '스케줄 관리',
-                              onAction: _showOverrideSheet,
-                            ),
-                          ],
-                        );
-                      }
-
-                      return ListView.builder(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: filteredItems.length,
-                        itemBuilder: (context, index) {
-                          final item = filteredItems[index];
-                          final isPast = _isPastTime(item.startTime);
-                          if (item.hasReservations) {
-                            final reservations = item.reservations!;
-                            return TimelineScheduleCard(
-                              reservations: reservations,
-                              slot: item.slot,
-                              isPast: isPast,
-                              onTap: reservations.length > 1
-                                  ? () => _showReservationListSheet(reservations)
-                                  : () => _openReservationFlow(reservations.first),
+                        // Add slots (with or without reservation)
+                        for (final slot in _slots) {
+                          final key = '${slot['coachId']}|${slot['startTime']}';
+                          final reservations = reservationMap[key];
+                          if (reservations != null && reservations.isNotEmpty) {
+                            matchedKeys.add(key);
+                            timelineItems.add(
+                              _TimelineItem(
+                                startTime: reservations.first.startTime,
+                                reservations: reservations,
+                                slot: slot,
+                              ),
                             );
                           } else {
-                            return EmptySlotCard(
-                              slot: item.slot!,
-                              isPast: isPast,
-                              title: item.slot!['blocked'] == true
-                                  ? '예약 마감된 타임'
-                                  : null,
-                              subtitle: item.slot!['blocked'] == true
-                                  ? '눌러서 마감 해제'
-                                  : null,
-                              onTap: isPast ? null : () => _showEmptySlotActions(item.slot!),
+                            timelineItems.add(
+                              _TimelineItem(
+                                startTime: slot['startTime'] as String,
+                                slot: slot,
+                              ),
                             );
                           }
-                        },
-                      );
-                    }),
+                        }
+
+                        // Add reservations not matched to any slot
+                        for (final entry in reservationMap.entries) {
+                          final key = entry.key;
+                          if (!matchedKeys.contains(key)) {
+                            final reservations = entry.value;
+                            timelineItems.add(
+                              _TimelineItem(
+                                startTime: reservations.first.startTime,
+                                reservations: reservations,
+                              ),
+                            );
+                          }
+                        }
+
+                        // Sort by startTime
+                        timelineItems.sort(
+                          (a, b) => a.startTime.compareTo(b.startTime),
+                        );
+
+                        final filteredItems = timelineItems.where((item) {
+                          final isPast = _isPastTime(item.startTime);
+                          return switch (_filter) {
+                            _TimelineFilter.all => true,
+                            _TimelineFilter.reservations =>
+                              item.hasReservations,
+                            _TimelineFilter.open =>
+                              item.slot != null &&
+                                  item.slot!['available'] == true,
+                            _TimelineFilter.past => isPast,
+                          };
+                        }).toList();
+                        final emptyStateTitle = switch (_filter) {
+                          _TimelineFilter.all => '표시할 타임라인이 없습니다',
+                          _TimelineFilter.reservations => '예약된 타임이 없습니다',
+                          _TimelineFilter.open => '남아 있는 빈 타임이 없습니다',
+                          _TimelineFilter.past => '지난 타임이 없습니다',
+                        };
+                        final emptyStateMessage = switch (_filter) {
+                          _TimelineFilter.all =>
+                            '선택한 날짜에 표시할 일정이 없습니다.\n스케줄 설정이나 예외 일정을 확인해보세요.',
+                          _TimelineFilter.reservations =>
+                            '이 날짜에는 예약되거나 신청된 수업이 없습니다.',
+                          _TimelineFilter.open =>
+                            '현재 남아 있는 예약 가능 타임이 없습니다.\n다른 날짜를 보거나 정원을 확인해보세요.',
+                          _TimelineFilter.past => '선택한 날짜에는 지난 시간대가 없습니다.',
+                        };
+
+                        if (_slotLoadError != null && filteredItems.isEmpty) {
+                          return ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+                            children: [
+                              ScheduleStateCard(
+                                icon: Icons.cloud_off_rounded,
+                                iconColor: AppTheme.errorColor,
+                                title: '스케줄을 불러오지 못했습니다',
+                                message: _slotLoadError!,
+                                actionLabel: '다시 시도',
+                                onAction: _refreshAll,
+                              ),
+                            ],
+                          );
+                        }
+
+                        if (filteredItems.isEmpty) {
+                          return ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
+                            children: [
+                              ScheduleStateCard(
+                                icon: Icons.event_busy_rounded,
+                                title: emptyStateTitle,
+                                message: emptyStateMessage,
+                                actionLabel: '스케줄 관리',
+                                onAction: _showOverrideSheet,
+                              ),
+                            ],
+                          );
+                        }
+
+                        return ListView.builder(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemCount: filteredItems.length,
+                          itemBuilder: (context, index) {
+                            final item = filteredItems[index];
+                            final isPast = _isPastTime(item.startTime);
+                            if (item.hasReservations) {
+                              final reservations = item.reservations!;
+                              return TimelineScheduleCard(
+                                reservations: reservations,
+                                slot: item.slot,
+                                isPast: isPast,
+                                onTap: reservations.length > 1
+                                    ? () => _showReservationListSheet(
+                                        reservations,
+                                      )
+                                    : () => _openReservationFlow(
+                                        reservations.first,
+                                      ),
+                              );
+                            } else {
+                              return EmptySlotCard(
+                                slot: item.slot!,
+                                isPast: isPast,
+                                title: item.slot!['blocked'] == true
+                                    ? '예약 마감된 타임'
+                                    : item.slot!['isPublic'] == true
+                                    ? '빈 타임 · 공개'
+                                    : '빈 타임 · 비공개',
+                                subtitle: item.slot!['blocked'] == true
+                                    ? '눌러서 마감 해제'
+                                    : item.slot!['isPublic'] == true
+                                    ? '회원이 예약 가능한 시간'
+                                    : '회원 앱에는 보이지 않는 시간',
+                                onTap: isPast
+                                    ? null
+                                    : () => _showEmptySlotActions(item.slot!),
+                              );
+                            }
+                          },
+                        );
+                      },
+                    ),
             ),
           ),
         ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
-          final result = await context.push('/reservations/new', extra: {
-            'date': DateFormat('yyyy-MM-dd').format(_selectedDay),
-          });
+          final result = await context.push(
+            '/reservations/new',
+            extra: {'date': DateFormat('yyyy-MM-dd').format(_selectedDay)},
+          );
           if (result == true) {
             _loadReservations();
             _loadSlots();
@@ -1239,10 +1595,7 @@ class _ReservationInfoRow extends StatelessWidget {
   final String label;
   final String value;
 
-  const _ReservationInfoRow({
-    required this.label,
-    required this.value,
-  });
+  const _ReservationInfoRow({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
@@ -1313,7 +1666,8 @@ class _OverrideBottomSheet extends ConsumerStatefulWidget {
   });
 
   @override
-  ConsumerState<_OverrideBottomSheet> createState() => _OverrideBottomSheetState();
+  ConsumerState<_OverrideBottomSheet> createState() =>
+      _OverrideBottomSheetState();
 }
 
 class _OverrideBottomSheetState extends ConsumerState<_OverrideBottomSheet> {
@@ -1338,7 +1692,9 @@ class _OverrideBottomSheetState extends ConsumerState<_OverrideBottomSheet> {
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
   Future<void> _deleteOverride(String id) async {
-    final success = await ref.read(scheduleOverrideProvider.notifier).deleteOverride(id);
+    final success = await ref
+        .read(scheduleOverrideProvider.notifier)
+        .deleteOverride(id);
     if (success) widget.onChanged();
   }
 
@@ -1347,18 +1703,15 @@ class _OverrideBottomSheetState extends ConsumerState<_OverrideBottomSheet> {
       final startMin = _startTime.hour * 60 + _startTime.minute;
       final endMin = _endTime.hour * 60 + _endTime.minute;
       if (startMin >= endMin) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('시작시간이 종료시간보다 빨라야 합니다')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('시작시간이 종료시간보다 빨라야 합니다')));
         return;
       }
     }
 
     final dateStr = DateFormat('yyyy-MM-dd').format(widget.selectedDay);
-    final data = <String, dynamic>{
-      'date': dateStr,
-      'type': _type,
-    };
+    final data = <String, dynamic>{'date': dateStr, 'type': _type};
 
     if (_type == 'OPEN') {
       data['startTime'] = _fmt(_startTime);
@@ -1368,7 +1721,9 @@ class _OverrideBottomSheetState extends ConsumerState<_OverrideBottomSheet> {
       data['maxCapacity'] = _maxCapacity;
     }
 
-    final success = await ref.read(scheduleOverrideProvider.notifier).createOverride(data);
+    final success = await ref
+        .read(scheduleOverrideProvider.notifier)
+        .createOverride(data);
     if (success) widget.onChanged();
   }
 
@@ -1376,7 +1731,9 @@ class _OverrideBottomSheetState extends ConsumerState<_OverrideBottomSheet> {
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.only(
-        left: 20, right: 20, top: 16,
+        left: 20,
+        right: 20,
+        top: 16,
         bottom: MediaQuery.of(context).viewInsets.bottom + 20,
       ),
       child: Column(
@@ -1386,7 +1743,8 @@ class _OverrideBottomSheetState extends ConsumerState<_OverrideBottomSheet> {
           // Handle bar
           Center(
             child: Container(
-              width: 40, height: 4,
+              width: 40,
+              height: 4,
               decoration: BoxDecoration(
                 color: Colors.grey.shade300,
                 borderRadius: BorderRadius.circular(2),
@@ -1402,62 +1760,87 @@ class _OverrideBottomSheetState extends ConsumerState<_OverrideBottomSheet> {
 
           // Existing overrides list
           if (widget.overrides.isNotEmpty) ...[
-            Text('설정된 오버라이드', style: TextStyle(fontSize: 13, color: Colors.grey.shade600, fontWeight: FontWeight.w600)),
+            Text(
+              '설정된 오버라이드',
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.grey.shade600,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
             const SizedBox(height: 8),
-            ...widget.overrides.map((o) => Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: o.type == 'CLOSED'
-                    ? AppTheme.errorColor.withValues(alpha: 0.06)
-                    : AppTheme.successColor.withValues(alpha: 0.06),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
+            ...widget.overrides.map(
+              (o) => Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
                   color: o.type == 'CLOSED'
-                      ? AppTheme.errorColor.withValues(alpha: 0.2)
-                      : AppTheme.successColor.withValues(alpha: 0.2),
+                      ? AppTheme.errorColor.withValues(alpha: 0.06)
+                      : AppTheme.successColor.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: o.type == 'CLOSED'
+                        ? AppTheme.errorColor.withValues(alpha: 0.2)
+                        : AppTheme.successColor.withValues(alpha: 0.2),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      o.type == 'CLOSED'
+                          ? Icons.block_rounded
+                          : Icons.add_circle_outline_rounded,
+                      size: 18,
+                      color: o.type == 'CLOSED'
+                          ? AppTheme.errorColor
+                          : AppTheme.successColor,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            o.type == 'CLOSED' ? '휴무' : '추가 오픈',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                              color: o.type == 'CLOSED'
+                                  ? AppTheme.errorColor
+                                  : AppTheme.successColor,
+                            ),
+                          ),
+                          if (o.type == 'OPEN' && o.startTime != null)
+                            Text(
+                              '${o.startTime} - ${o.endTime}'
+                              ' (${o.slotDuration ?? 60}분'
+                              '${(o.breakMinutes ?? 0) > 0 ? ', 쉬는시간 ${o.breakMinutes}분' : ''}'
+                              ', 정원 ${o.maxCapacity ?? 1}명)',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: Icon(
+                        Icons.close_rounded,
+                        size: 18,
+                        color: Colors.grey.shade400,
+                      ),
+                      onPressed: () => _deleteOverride(o.id),
+                      constraints: const BoxConstraints(),
+                      padding: EdgeInsets.zero,
+                    ),
+                  ],
                 ),
               ),
-              child: Row(
-                children: [
-                  Icon(
-                    o.type == 'CLOSED' ? Icons.block_rounded : Icons.add_circle_outline_rounded,
-                    size: 18,
-                    color: o.type == 'CLOSED' ? AppTheme.errorColor : AppTheme.successColor,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          o.type == 'CLOSED' ? '휴무' : '추가 오픈',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                            color: o.type == 'CLOSED' ? AppTheme.errorColor : AppTheme.successColor,
-                          ),
-                        ),
-                        if (o.type == 'OPEN' && o.startTime != null)
-                          Text(
-                            '${o.startTime} - ${o.endTime}'
-                            ' (${o.slotDuration ?? 60}분'
-                            '${(o.breakMinutes ?? 0) > 0 ? ', 쉬는시간 ${o.breakMinutes}분' : ''}'
-                            ', 정원 ${o.maxCapacity ?? 1}명)',
-                            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                          ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.close_rounded, size: 18, color: Colors.grey.shade400),
-                    onPressed: () => _deleteOverride(o.id),
-                    constraints: const BoxConstraints(),
-                    padding: EdgeInsets.zero,
-                  ),
-                ],
-              ),
-            )),
+            ),
             const SizedBox(height: 8),
           ],
 
@@ -1471,7 +1854,9 @@ class _OverrideBottomSheetState extends ConsumerState<_OverrideBottomSheet> {
                 label: const Text('오버라이드 추가'),
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               ),
             )
@@ -1499,14 +1884,22 @@ class _OverrideBottomSheetState extends ConsumerState<_OverrideBottomSheet> {
                       ),
                       child: Column(
                         children: [
-                          Icon(Icons.block_rounded,
-                              color: _type == 'CLOSED' ? AppTheme.errorColor : Colors.grey),
+                          Icon(
+                            Icons.block_rounded,
+                            color: _type == 'CLOSED'
+                                ? AppTheme.errorColor
+                                : Colors.grey,
+                          ),
                           const SizedBox(height: 4),
-                          Text('휴무',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                color: _type == 'CLOSED' ? AppTheme.errorColor : Colors.grey.shade600,
-                              )),
+                          Text(
+                            '휴무',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: _type == 'CLOSED'
+                                  ? AppTheme.errorColor
+                                  : Colors.grey.shade600,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -1531,14 +1924,22 @@ class _OverrideBottomSheetState extends ConsumerState<_OverrideBottomSheet> {
                       ),
                       child: Column(
                         children: [
-                          Icon(Icons.add_circle_outline_rounded,
-                              color: _type == 'OPEN' ? AppTheme.successColor : Colors.grey),
+                          Icon(
+                            Icons.add_circle_outline_rounded,
+                            color: _type == 'OPEN'
+                                ? AppTheme.successColor
+                                : Colors.grey,
+                          ),
                           const SizedBox(height: 4),
-                          Text('추가 오픈',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                color: _type == 'OPEN' ? AppTheme.successColor : Colors.grey.shade600,
-                              )),
+                          Text(
+                            '추가 오픈',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              color: _type == 'OPEN'
+                                  ? AppTheme.successColor
+                                  : Colors.grey.shade600,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -1556,9 +1957,18 @@ class _OverrideBottomSheetState extends ConsumerState<_OverrideBottomSheet> {
                     child: ListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('시작', style: TextStyle(fontSize: 13)),
-                      subtitle: Text(_fmt(_startTime), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                      subtitle: Text(
+                        _fmt(_startTime),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       onTap: () async {
-                        final t = await showTimePicker(context: context, initialTime: _startTime);
+                        final t = await showTimePicker(
+                          context: context,
+                          initialTime: _startTime,
+                        );
                         if (t != null) setState(() => _startTime = t);
                       },
                     ),
@@ -1567,9 +1977,18 @@ class _OverrideBottomSheetState extends ConsumerState<_OverrideBottomSheet> {
                     child: ListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('종료', style: TextStyle(fontSize: 13)),
-                      subtitle: Text(_fmt(_endTime), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                      subtitle: Text(
+                        _fmt(_endTime),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                       onTap: () async {
-                        final t = await showTimePicker(context: context, initialTime: _endTime);
+                        final t = await showTimePicker(
+                          context: context,
+                          initialTime: _endTime,
+                        );
                         if (t != null) setState(() => _endTime = t);
                       },
                     ),
@@ -1581,11 +2000,17 @@ class _OverrideBottomSheetState extends ConsumerState<_OverrideBottomSheet> {
                   Expanded(
                     child: TextFormField(
                       controller: _slotDurationController,
-                      decoration: const InputDecoration(labelText: '수업 시간 (분)', isDense: true, hintText: '예: 60'),
+                      decoration: const InputDecoration(
+                        labelText: '수업 시간 (분)',
+                        isDense: true,
+                        hintText: '예: 60',
+                      ),
                       keyboardType: TextInputType.number,
                       onChanged: (v) {
                         final parsed = int.tryParse(v);
-                        if (parsed != null && parsed >= 15) _slotDuration = parsed;
+                        if (parsed != null && parsed >= 15) {
+                          _slotDuration = parsed;
+                        }
                       },
                     ),
                   ),
@@ -1593,11 +2018,17 @@ class _OverrideBottomSheetState extends ConsumerState<_OverrideBottomSheet> {
                   Expanded(
                     child: TextFormField(
                       controller: _breakMinutesController,
-                      decoration: const InputDecoration(labelText: '쉬는시간 (분)', isDense: true, hintText: '예: 10'),
+                      decoration: const InputDecoration(
+                        labelText: '쉬는시간 (분)',
+                        isDense: true,
+                        hintText: '예: 10',
+                      ),
                       keyboardType: TextInputType.number,
                       onChanged: (v) {
                         final parsed = int.tryParse(v);
-                        if (parsed != null && parsed >= 0) _breakMinutes = parsed;
+                        if (parsed != null && parsed >= 0) {
+                          _breakMinutes = parsed;
+                        }
                       },
                     ),
                   ),
@@ -1611,8 +2042,17 @@ class _OverrideBottomSheetState extends ConsumerState<_OverrideBottomSheet> {
                   Expanded(
                     child: DropdownButtonFormField<int>(
                       initialValue: _maxCapacity,
-                      decoration: const InputDecoration(labelText: '한 타임당 정원', isDense: true),
-                      items: List.generate(10, (i) => DropdownMenuItem(value: i + 1, child: Text('${i + 1}명'))),
+                      decoration: const InputDecoration(
+                        labelText: '한 타임당 정원',
+                        isDense: true,
+                      ),
+                      items: List.generate(
+                        10,
+                        (i) => DropdownMenuItem(
+                          value: i + 1,
+                          child: Text('${i + 1}명'),
+                        ),
+                      ),
                       onChanged: (v) => setState(() => _maxCapacity = v ?? 1),
                     ),
                   ),
@@ -1628,7 +2068,9 @@ class _OverrideBottomSheetState extends ConsumerState<_OverrideBottomSheet> {
                     onPressed: () => setState(() => _isAdding = false),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                     child: const Text('취소'),
                   ),
@@ -1639,7 +2081,9 @@ class _OverrideBottomSheetState extends ConsumerState<_OverrideBottomSheet> {
                     onPressed: _createOverride,
                     style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                     child: Text(_type == 'CLOSED' ? '휴무 설정' : '추가 오픈'),
                   ),

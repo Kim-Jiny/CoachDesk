@@ -8,6 +8,9 @@ class Organization {
   final String reservationPolicy;
   final String? reservationNoticeText;
   final String? reservationNoticeImageUrl;
+  final int reservationOpenDaysBefore;
+  final int reservationOpenHoursBefore;
+  final int reservationCancelDeadlineMinutes;
 
   const Organization({
     required this.id,
@@ -19,6 +22,9 @@ class Organization {
     this.reservationPolicy = 'AUTO_CONFIRM',
     this.reservationNoticeText,
     this.reservationNoticeImageUrl,
+    this.reservationOpenDaysBefore = 30,
+    this.reservationOpenHoursBefore = 0,
+    this.reservationCancelDeadlineMinutes = 120,
   });
 
   factory Organization.fromJson(Map<String, dynamic> json) {
@@ -32,6 +38,12 @@ class Organization {
       reservationPolicy: json['reservationPolicy'] as String? ?? 'AUTO_CONFIRM',
       reservationNoticeText: json['reservationNoticeText'] as String?,
       reservationNoticeImageUrl: json['reservationNoticeImageUrl'] as String?,
+      reservationOpenDaysBefore:
+          json['reservationOpenDaysBefore'] as int? ?? 30,
+      reservationOpenHoursBefore:
+          json['reservationOpenHoursBefore'] as int? ?? 0,
+      reservationCancelDeadlineMinutes:
+          json['reservationCancelDeadlineMinutes'] as int? ?? 120,
     );
   }
 
@@ -45,5 +57,8 @@ class Organization {
     'reservationPolicy': reservationPolicy,
     'reservationNoticeText': reservationNoticeText,
     'reservationNoticeImageUrl': reservationNoticeImageUrl,
+    'reservationOpenDaysBefore': reservationOpenDaysBefore,
+    'reservationOpenHoursBefore': reservationOpenHoursBefore,
+    'reservationCancelDeadlineMinutes': reservationCancelDeadlineMinutes,
   };
 }

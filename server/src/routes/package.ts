@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../utils/prisma';
 import { authMiddleware } from '../middleware/auth';
 import { getCurrentOrgId } from '../utils/org-access';
+import { shouldSendPushForType } from '../utils/notification-preferences';
 import { addDays, formatDateOnly, parseDateOnly } from '../utils/kst-date';
 import {
   findMemberPackageCompat,
@@ -31,12 +32,54 @@ router.get('/', async (req: Request, res: Response) => {
     const orgId = await getCurrentOrgId(req.user!.userId, req.header('x-organization-id') ?? undefined);
     if (!orgId) { res.status(403).json({ error: 'No organization' }); return; }
 
-    const packages = await prisma.package.findMany({
-      where: { organizationId: orgId },
-      orderBy: { createdAt: 'desc' },
-    });
+    const [packages, memberPackages] = await Promise.all([
+      prisma.package.findMany({
+        where: { organizationId: orgId },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.memberPackage.findMany({
+        where: {
+          package: { organizationId: orgId },
+        },
+        select: {
+          packageId: true,
+          memberId: true,
+          usedSessions: true,
+          status: true,
+        },
+      }),
+    ]);
 
-    res.json(packages);
+    const statsByPackageId = new Map<
+      string,
+      {
+        activeMemberIds: Set<string>;
+        totalUsedSessions: number;
+      }
+    >();
+
+    for (const memberPackage of memberPackages) {
+      const current = statsByPackageId.get(memberPackage.packageId) ?? {
+        activeMemberIds: new Set<string>(),
+        totalUsedSessions: 0,
+      };
+      current.totalUsedSessions += memberPackage.usedSessions;
+      if (memberPackage.status === 'ACTIVE') {
+        current.activeMemberIds.add(memberPackage.memberId);
+      }
+      statsByPackageId.set(memberPackage.packageId, current);
+    }
+
+    res.json(
+      packages.map((pkg) => {
+        const stats = statsByPackageId.get(pkg.id);
+        return {
+          ...pkg,
+          activeMemberCount: stats?.activeMemberIds.size ?? 0,
+          totalUsedSessions: stats?.totalUsedSessions ?? 0,
+        };
+      }),
+    );
   } catch (err) {
     console.error('List packages error:', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -220,14 +263,20 @@ router.post('/member-packages/:id/pause/approve', async (req: Request, res: Resp
     if (memberAccountId) {
       const memberAccount = await prisma.memberAccount.findUnique({
         where: { id: memberAccountId },
-        select: { fcmToken: true },
+        select: { fcmToken: true, notificationPreferences: true },
       });
-      if (memberAccount?.fcmToken) {
+      if (
+        memberAccount?.fcmToken &&
+        shouldSendPushForType(
+          memberAccount.notificationPreferences,
+          'PACKAGE_PAUSE_APPROVED',
+        )
+      ) {
         await sendPush(
           memberAccount.fcmToken,
           '패키지 정지 승인',
           `${startDate}부터 ${endDate}까지 정지 승인되었고, 만료일이 ${extensionDays}일 연장됩니다`,
-          { memberPackageId: memberPackage.id },
+          { type: 'PACKAGE_PAUSE_APPROVED', memberPackageId: memberPackage.id },
         );
       }
     }
@@ -285,16 +334,22 @@ router.post('/member-packages/:id/pause/reject', async (req: Request, res: Respo
     if (memberAccountId) {
       const memberAccount = await prisma.memberAccount.findUnique({
         where: { id: memberAccountId },
-        select: { fcmToken: true },
+        select: { fcmToken: true, notificationPreferences: true },
       });
-      if (memberAccount?.fcmToken) {
+      if (
+        memberAccount?.fcmToken &&
+        shouldSendPushForType(
+          memberAccount.notificationPreferences,
+          'PACKAGE_PAUSE_REJECTED',
+        )
+      ) {
         await sendPush(
           memberAccount.fcmToken,
           '패키지 정지 반려',
           (body.note?.trim().length ?? 0) > 0
             ? `정지 신청이 반려되었습니다: ${body.note!.trim()}`
             : '패키지 정지 신청이 반려되었습니다',
-          { memberPackageId: memberPackage.id },
+          { type: 'PACKAGE_PAUSE_REJECTED', memberPackageId: memberPackage.id },
         );
       }
     }

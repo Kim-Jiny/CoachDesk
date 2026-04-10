@@ -8,8 +8,11 @@ type SlotResult = {
   startTime: string;
   endTime: string;
   available: boolean;
+  isPublic: boolean;
+  baseIsPublic: boolean;
   blocked?: boolean;
   blockedOverrideId?: string;
+  visibilityOverrideId?: string;
   coachName?: string;
 };
 
@@ -20,6 +23,7 @@ type ScheduleLike = {
   slotDuration: number;
   breakMinutes?: number | null;
   maxCapacity: number;
+  isPublic?: boolean;
   coach?: { name: string } | null;
 };
 
@@ -53,6 +57,9 @@ export async function getAvailableSlots(params: {
     .map((override) => override.coachId);
   const openOverrides = overrides.filter((override) => override.type === 'OPEN');
   const closedOverrides = overrides.filter((override) => override.type === 'CLOSED');
+  const visibilityOverrides = overrides.filter(
+    (override) => override.type === 'VISIBLE' || override.type === 'HIDDEN',
+  );
 
   const schedules = await findSchedulesCompat({
     organizationId,
@@ -73,6 +80,7 @@ export async function getAvailableSlots(params: {
     select: {
       coachId: true,
       startTime: true,
+      endTime: true,
     },
   });
 
@@ -97,6 +105,7 @@ export async function getAvailableSlots(params: {
           slotDuration: override.slotDuration || 60,
           breakMinutes: override.breakMinutes || 0,
           maxCapacity: override.maxCapacity || 1,
+          isPublic: override.isPublic ?? false,
           coach: (override as { coach?: { name: string } | null }).coach ?? null,
         },
         existingReservations,
@@ -109,16 +118,29 @@ export async function getAvailableSlots(params: {
   }
 
   const slots = [...slotMap.values()].map((slot) => {
+    const visibilityOverride = visibilityOverrides.find(
+      (override) =>
+        override.coachId === slot.coachId &&
+        isTimeRangeClosed(override, slot.startTime, slot.endTime),
+    );
     const blockingOverride = closedOverrides.find(
       (override) =>
         override.coachId === slot.coachId &&
         isTimeRangeClosed(override, slot.startTime, slot.endTime),
     );
 
-    if (!blockingOverride) return slot;
+    const visibleSlot = visibilityOverride
+        ? {
+            ...slot,
+            isPublic: visibilityOverride.type === 'VISIBLE',
+            visibilityOverrideId: visibilityOverride.id,
+          }
+        : slot;
+
+    if (!blockingOverride) return visibleSlot;
 
     return {
-      ...slot,
+      ...visibleSlot,
       available: false,
       blocked: true,
       blockedOverrideId: blockingOverride.id,
@@ -155,9 +177,26 @@ function getSlotKey(slot: SlotResult): string {
   return `${slot.coachId}|${slot.startTime}|${slot.endTime}`;
 }
 
+function isOverlappingTimeRange(
+  leftStart: string,
+  leftEnd: string,
+  rightStart: string,
+  rightEnd: string,
+) {
+  const leftStartMinutes =
+      Number(leftStart.slice(0, 2)) * 60 + Number(leftStart.slice(3, 5));
+  const leftEndMinutes =
+      Number(leftEnd.slice(0, 2)) * 60 + Number(leftEnd.slice(3, 5));
+  const rightStartMinutes =
+      Number(rightStart.slice(0, 2)) * 60 + Number(rightStart.slice(3, 5));
+  const rightEndMinutes =
+      Number(rightEnd.slice(0, 2)) * 60 + Number(rightEnd.slice(3, 5));
+  return leftStartMinutes < rightEndMinutes && leftEndMinutes > rightStartMinutes;
+}
+
 function generateSlotsFromSchedule(
   schedule: ScheduleLike,
-  existingReservations: Array<{ coachId: string; startTime: string }>,
+  existingReservations: Array<{ coachId: string; startTime: string; endTime: string }>,
   isToday: boolean,
   nowMinutes: number,
   includeCoachNames: boolean,
@@ -177,7 +216,14 @@ function generateSlotsFromSchedule(
     const slotEnd = `${String(Math.floor(slotEndMinutes / 60)).padStart(2, '0')}:${String(slotEndMinutes % 60).padStart(2, '0')}`;
 
     const booked = existingReservations.filter(
-      (reservation) => reservation.coachId === schedule.coachId && reservation.startTime === slotStart,
+      (reservation) =>
+          reservation.coachId === schedule.coachId &&
+          isOverlappingTimeRange(
+            slotStart,
+            slotEnd,
+            reservation.startTime,
+            reservation.endTime,
+          ),
     ).length;
 
     result.push({
@@ -185,6 +231,8 @@ function generateSlotsFromSchedule(
       startTime: slotStart,
       endTime: slotEnd,
       available: booked < schedule.maxCapacity,
+      isPublic: schedule.isPublic ?? false,
+      baseIsPublic: schedule.isPublic ?? false,
       ...(includeCoachNames ? { coachName: schedule.coach?.name ?? '' } : {}),
     });
   }

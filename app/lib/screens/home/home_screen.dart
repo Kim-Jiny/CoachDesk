@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/ui_settings_provider.dart';
 import '../../widgets/common.dart';
 
 final dashboardProvider = FutureProvider.autoDispose((ref) async {
@@ -30,6 +31,7 @@ class HomeScreen extends ConsumerWidget {
     final authState = ref.watch(authProvider);
     final dashboard = ref.watch(dashboardProvider);
     final unreadCount = ref.watch(unreadNotificationCountProvider);
+    final hideRevenueAmount = ref.watch(hideRevenueAmountProvider);
 
     return Scaffold(
       body: RefreshIndicator(
@@ -150,7 +152,8 @@ class HomeScreen extends ConsumerWidget {
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
                 child: dashboard.when(
-                  data: (data) => _buildDashboard(context, data),
+                  data: (data) =>
+                      _buildDashboard(context, ref, data, hideRevenueAmount),
                   loading: () =>
                       const ShimmerLoading(style: ShimmerStyle.stats),
                   error: (_, _) => const EmptyState(
@@ -170,7 +173,12 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildDashboard(BuildContext context, Map<String, dynamic> data) {
+  Widget _buildDashboard(
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic> data,
+    bool hideRevenueAmount,
+  ) {
     final todayReservations = data['todayReservations'] as List? ?? [];
     final formatter = NumberFormat('#,###');
 
@@ -195,7 +203,11 @@ class HomeScreen extends ConsumerWidget {
                 value: '${data['pendingReservations'] ?? 0}',
                 icon: Icons.schedule,
                 color: Colors.orange,
-                onTap: () => context.push('/reservations/pending'),
+                onTap: () async {
+                  await context.push('/reservations/pending');
+                  if (!context.mounted) return;
+                  ref.invalidate(dashboardProvider);
+                },
               ),
             ),
           ],
@@ -215,7 +227,9 @@ class HomeScreen extends ConsumerWidget {
             Expanded(
               child: StatCard(
                 title: '이번 달 매출',
-                value: '${formatter.format(data['monthRevenue'] ?? 0)}원',
+                value: hideRevenueAmount
+                    ? '금액 숨김'
+                    : '${formatter.format(data['monthRevenue'] ?? 0)}원',
                 icon: Icons.attach_money,
                 color: AppTheme.secondaryColor,
                 onTap: () =>
@@ -265,11 +279,11 @@ class HomeScreen extends ConsumerWidget {
             const SizedBox(width: 12),
             Expanded(
               child: _QuickActionCard(
-                icon: Icons.bar_chart_rounded,
-                title: '리포트',
-                subtitle: '매출 확인',
+                icon: Icons.schedule_rounded,
+                title: '수업시간 설정',
+                subtitle: '시간 관리',
                 color: Colors.orange,
-                onTap: () => context.push('/reports/revenue'),
+                onTap: () => context.push('/settings/schedules'),
               ),
             ),
           ],

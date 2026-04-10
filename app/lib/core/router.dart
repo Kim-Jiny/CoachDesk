@@ -32,6 +32,7 @@ import '../screens/report/revenue_report_screen.dart';
 import '../screens/report/attendance_report_screen.dart';
 import '../screens/settings/schedule_setting_screen.dart';
 import '../screens/settings/team_management_screen.dart';
+import '../screens/settings/notification_settings_screen.dart';
 import '../screens/chat/chat_room_list_screen.dart';
 import '../screens/chat/chat_screen.dart';
 import '../models/package.dart';
@@ -242,6 +243,18 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/settings/team',
         parentNavigatorKey: rootNavigatorKey,
         builder: (context, state) => const TeamManagementScreen(),
+      ),
+      GoRoute(
+        path: '/settings/notifications',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) =>
+            const NotificationSettingsScreen(isMember: false),
+      ),
+      GoRoute(
+        path: '/member/settings/notifications',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) =>
+            const NotificationSettingsScreen(isMember: true),
       ),
       // Chat detail route (full-screen)
       GoRoute(

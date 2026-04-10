@@ -17,6 +17,15 @@ export function parseDateOnly(date: string): Date {
   return new Date(Date.UTC(year, month - 1, day));
 }
 
+export function parseKstDateTime(date: string, time: string): Date {
+  const { year, month, day } = parseDateParts(date);
+  const [hour, minute] = time.split(':').map(Number);
+  if (Number.isNaN(hour) || Number.isNaN(minute)) {
+    throw new Error(`Invalid time format: ${time}`);
+  }
+  return new Date(Date.UTC(year, month - 1, day, hour - 9, minute));
+}
+
 export function formatDateOnly(date: Date): string {
   const formatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: KST_TIME_ZONE,

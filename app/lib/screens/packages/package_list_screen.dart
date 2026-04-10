@@ -197,6 +197,15 @@ class _PackageListScreenState extends ConsumerState<PackageListScreen> {
                                           color: Colors.grey.shade500,
                                         ),
                                       ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '사용 중 ${pkg.activeMemberCount}명 · 누적 사용 ${pkg.totalUsedSessions}회',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey.shade600,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
                                       const SizedBox(height: 6),
                                       Wrap(
                                         spacing: 6,

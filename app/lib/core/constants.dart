@@ -5,7 +5,10 @@ class AppConstants {
 
   static const String _defaultDebugHost = 'http://172.30.1.35:3010/api';
   static const String _defaultReleaseHost = 'http://172.30.1.35:3010/api';
-  static const String _configuredHost = String.fromEnvironment('COACHDESK_API_BASE_URL', defaultValue: '');
+  static const String _configuredHost = String.fromEnvironment(
+    'COACHDESK_API_BASE_URL',
+    defaultValue: '',
+  );
   static const String _configuredDebugHost = String.fromEnvironment(
     'COACHDESK_API_BASE_URL_DEBUG',
     defaultValue: _defaultDebugHost,
@@ -33,6 +36,12 @@ class AppConstants {
   static const String isMemberAccountKey = 'is_member_account';
   static const String memberNameKey = 'member_name';
   static const String reservationLastMemberIdKey = 'reservation_last_member_id';
-  static const String reservationLastStartTimeKey = 'reservation_last_start_time';
+  static const String reservationLastStartTimeKey =
+      'reservation_last_start_time';
   static const String reservationLastEndTimeKey = 'reservation_last_end_time';
+  static const String hideRevenueAmountKey = 'hide_revenue_amount';
+  static const String adminNotificationPreferencesKey =
+      'admin_notification_preferences';
+  static const String memberNotificationPreferencesKey =
+      'member_notification_preferences';
 }

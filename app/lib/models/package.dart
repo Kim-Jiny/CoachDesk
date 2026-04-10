@@ -7,6 +7,8 @@ class Package {
   final int? validDays;
   final bool isActive;
   final bool isPublic;
+  final int activeMemberCount;
+  final int totalUsedSessions;
   final DateTime createdAt;
 
   const Package({
@@ -18,6 +20,8 @@ class Package {
     this.validDays,
     required this.isActive,
     required this.isPublic,
+    this.activeMemberCount = 0,
+    this.totalUsedSessions = 0,
     required this.createdAt,
   });
 
@@ -31,6 +35,8 @@ class Package {
       validDays: json['validDays'] as int?,
       isActive: json['isActive'] as bool? ?? true,
       isPublic: json['isPublic'] as bool? ?? false,
+      activeMemberCount: json['activeMemberCount'] as int? ?? 0,
+      totalUsedSessions: json['totalUsedSessions'] as int? ?? 0,
       createdAt: DateTime.parse(json['createdAt'] as String),
     );
   }

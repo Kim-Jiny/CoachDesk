@@ -74,6 +74,9 @@ class AuthNotifier extends Notifier<AuthState> {
         user: user,
         organization: org,
       );
+      try {
+        await FcmService.syncNotificationPreferences(isMember: false);
+      } catch (_) {}
     } catch (_) {
       await ApiClient.clearTokens();
       state = state.copyWith(status: AuthStatus.unauthenticated);
@@ -89,13 +92,16 @@ class AuthNotifier extends Notifier<AuthState> {
   }) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      final response = await _dio.post('/auth/register', data: {
-        'email': email,
-        'password': password,
-        'name': name,
-        'phone': phone,
-        'organizationName': organizationName,
-      });
+      final response = await _dio.post(
+        '/auth/register',
+        data: {
+          'email': email,
+          'password': password,
+          'name': name,
+          'phone': phone,
+          'organizationName': organizationName,
+        },
+      );
 
       final box = Hive.box(AppConstants.authBox);
       await box.put(AppConstants.isMemberAccountKey, false);
@@ -120,7 +126,8 @@ class AuthNotifier extends Notifier<AuthState> {
       FcmService.registerToken(isMember: false);
       return true;
     } on DioException catch (e) {
-      final msg = e.response?.data?['error'] as String? ?? 'Registration failed';
+      final msg =
+          e.response?.data?['error'] as String? ?? 'Registration failed';
       state = state.copyWith(isLoading: false, error: msg);
       return false;
     }
@@ -129,10 +136,10 @@ class AuthNotifier extends Notifier<AuthState> {
   Future<bool> login({required String email, required String password}) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      final response = await _dio.post('/auth/login', data: {
-        'email': email,
-        'password': password,
-      });
+      final response = await _dio.post(
+        '/auth/login',
+        data: {'email': email, 'password': password},
+      );
 
       final box = Hive.box(AppConstants.authBox);
       await box.put(AppConstants.isMemberAccountKey, false);
@@ -221,9 +228,10 @@ class AuthNotifier extends Notifier<AuthState> {
   Future<bool> upgradeFromMember({required String organizationName}) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      final response = await _dio.post('/auth/member/upgrade-to-admin', data: {
-        'organizationName': organizationName,
-      });
+      final response = await _dio.post(
+        '/auth/member/upgrade-to-admin',
+        data: {'organizationName': organizationName},
+      );
 
       final box = Hive.box(AppConstants.authBox);
       await box.put(AppConstants.isMemberAccountKey, false);
@@ -276,4 +284,6 @@ class AuthNotifier extends Notifier<AuthState> {
   }
 }
 
-final authProvider = NotifierProvider<AuthNotifier, AuthState>(AuthNotifier.new);
+final authProvider = NotifierProvider<AuthNotifier, AuthState>(
+  AuthNotifier.new,
+);

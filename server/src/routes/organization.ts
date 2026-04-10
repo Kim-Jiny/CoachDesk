@@ -16,6 +16,9 @@ const updateOrgSchema = z.object({
   reservationPolicy: z.enum(['AUTO_CONFIRM', 'REQUEST_APPROVAL']).optional(),
   reservationNoticeText: z.string().max(5000).nullable().optional(),
   reservationNoticeImageUrl: z.string().url().nullable().optional(),
+  reservationOpenDaysBefore: z.number().int().min(0).max(365).optional(),
+  reservationOpenHoursBefore: z.number().int().min(0).max(23).optional(),
+  reservationCancelDeadlineMinutes: z.number().int().min(0).max(7 * 24 * 60).optional(),
 });
 
 const uploadReservationNoticeImageSchema = z.object({

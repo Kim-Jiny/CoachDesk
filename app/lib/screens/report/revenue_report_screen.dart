@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
+import '../../providers/ui_settings_provider.dart';
 import '../../widgets/common.dart';
 
 class RevenueReportScreen extends ConsumerStatefulWidget {
@@ -76,9 +77,27 @@ class _RevenueReportScreenState extends ConsumerState<RevenueReportScreen> {
   @override
   Widget build(BuildContext context) {
     final formatter = NumberFormat('#,###');
+    final hideRevenueAmount = ref.watch(hideRevenueAmountProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('매출 리포트')),
+      appBar: AppBar(
+        title: const Text('매출 리포트'),
+        actions: [
+          IconButton(
+            tooltip: hideRevenueAmount ? '금액 표시' : '금액 숨기기',
+            onPressed: () {
+              ref
+                  .read(hideRevenueAmountProvider.notifier)
+                  .toggleHideRevenueAmount();
+            },
+            icon: Icon(
+              hideRevenueAmount
+                  ? Icons.visibility_off_outlined
+                  : Icons.visibility_outlined,
+            ),
+          ),
+        ],
+      ),
       body: Column(
         children: [
           // Month selector
@@ -176,7 +195,9 @@ class _RevenueReportScreenState extends ConsumerState<RevenueReportScreen> {
                               ),
                               const SizedBox(height: 8),
                               Text(
-                                '${formatter.format(_report!['totalRevenue'] ?? 0)}원',
+                                hideRevenueAmount
+                                    ? '금액 숨김'
+                                    : '${formatter.format(_report!['totalRevenue'] ?? 0)}원',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 30,
@@ -196,7 +217,7 @@ class _RevenueReportScreenState extends ConsumerState<RevenueReportScreen> {
                         const SizedBox(height: 20),
 
                         // Bar chart
-                        _buildBarChart(formatter),
+                        _buildBarChart(formatter, hideRevenueAmount),
                         const SizedBox(height: 20),
 
                         // Details
@@ -288,7 +309,9 @@ class _RevenueReportScreenState extends ConsumerState<RevenueReportScreen> {
                                       ),
                                     ),
                                     Text(
-                                      '${formatter.format(d['paidAmount'])}원',
+                                      hideRevenueAmount
+                                          ? '숨김'
+                                          : '${formatter.format(d['paidAmount'])}원',
                                       style: const TextStyle(
                                         fontWeight: FontWeight.w700,
                                         fontSize: 14,
@@ -308,9 +331,34 @@ class _RevenueReportScreenState extends ConsumerState<RevenueReportScreen> {
     );
   }
 
-  Widget _buildBarChart(NumberFormat formatter) {
+  Widget _buildBarChart(NumberFormat formatter, bool hideRevenueAmount) {
     final byMethod = _report!['byMethod'] as Map<String, dynamic>? ?? {};
     if (byMethod.isEmpty) return const SizedBox.shrink();
+    if (hideRevenueAmount) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: AppTheme.softShadow,
+        ),
+        child: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '결제 수단별 매출',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+            SizedBox(height: 8),
+            Text(
+              '금액 숨기기가 활성화되어 있어 차트를 가렸습니다.',
+              style: TextStyle(fontSize: 13, color: Colors.grey),
+            ),
+          ],
+        ),
+      );
+    }
 
     final entries = byMethod.entries.toList();
     final maxValue = entries.fold<double>(0, (max, e) {

@@ -1,5 +1,6 @@
 import { getIO } from './index';
 import { sendPush } from '../utils/firebase';
+import { shouldSendPushForType } from '../utils/notification-preferences';
 
 // ─── Reservation Events ─────────────────────────────────
 
@@ -58,6 +59,7 @@ export async function emitNewMessage(
   chatRoomId: string,
   message: any,
   targetRoomIds: string[],
+  senderName?: string,
 ) {
   const io = getIO();
 
@@ -69,6 +71,7 @@ export async function emitNewMessage(
     io.in(roomId).emit('chat:notification', {
       chatRoomId,
       message,
+      senderName,
     });
   }
 }
@@ -83,6 +86,7 @@ export async function emitMessageRead(chatRoomId: string, readBy: string) {
 export async function sendPushIfOffline(
   room: string,
   fcmToken: string | null | undefined,
+  rawNotificationPreferences: string | null | undefined,
   title: string,
   body: string,
   data?: Record<string, string>,
@@ -94,6 +98,7 @@ export async function sendPushIfOffline(
 
   // If user is online via socket, skip push
   if (sockets.length > 0) return;
+  if (!shouldSendPushForType(rawNotificationPreferences, data?.type)) return;
 
   sendPush(fcmToken, title, body, data);
 }

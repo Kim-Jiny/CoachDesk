@@ -113,10 +113,15 @@ class TimelineScheduleCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final primaryReservation = reservations.first;
-    final color = isPast ? Colors.grey.shade500 : _timelineStatusColor(_aggregateStatus(reservations));
-    final visibleMemo = primaryReservation.quickMemo?.trim().isNotEmpty == true
-        ? primaryReservation.quickMemo!
-        : primaryReservation.memberQuickMemo;
+    final color = isPast
+        ? Colors.grey.shade500
+        : _timelineStatusColor(_aggregateStatus(reservations));
+    final reservationQuickMemo = primaryReservation.quickMemo?.trim();
+    final memberQuickMemo = primaryReservation.memberQuickMemo?.trim();
+    final shouldShowInlineMemberMemo =
+        reservations.length == 1 &&
+        memberQuickMemo != null &&
+        memberQuickMemo.isNotEmpty;
     final statusSummary = _buildStatusSummary(reservations);
     final delaySummary = primaryReservation.delayMinutes > 0
         ? '${primaryReservation.delayMinutes}분 지연'
@@ -124,7 +129,8 @@ class TimelineScheduleCard extends StatelessWidget {
     final displayName = reservations.length > 1
         ? '${primaryReservation.memberName ?? '예약자'} 외 +${reservations.length - 1}'
         : (primaryReservation.memberName ?? '');
-    final displayEndTime = slot?['endTime'] as String? ?? primaryReservation.endTime;
+    final displayEndTime =
+        slot?['endTime'] as String? ?? primaryReservation.endTime;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -164,7 +170,10 @@ class TimelineScheduleCard extends StatelessWidget {
               child: GestureDetector(
                 onTap: onTap,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(14),
@@ -189,11 +198,34 @@ class TimelineScheduleCard extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              displayName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontWeight: FontWeight.w600),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    displayName,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                if (shouldShowInlineMemberMemo) ...[
+                                  const SizedBox(width: 6),
+                                  Flexible(
+                                    child: Text(
+                                      memberQuickMemo,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.teal.shade700,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
                             if (reservations.length > 1)
                               Padding(
@@ -223,11 +255,12 @@ class TimelineScheduleCard extends StatelessWidget {
                                   ),
                                 ),
                               ),
-                            if (visibleMemo != null && visibleMemo.isNotEmpty)
+                            if (reservationQuickMemo != null &&
+                                reservationQuickMemo.isNotEmpty)
                               Padding(
                                 padding: const EdgeInsets.only(top: 3),
                                 child: Text(
-                                  visibleMemo,
+                                  '예약: $reservationQuickMemo',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
@@ -259,7 +292,10 @@ class TimelineScheduleCard extends StatelessWidget {
                           if (reservations.length > 1)
                             Container(
                               margin: const EdgeInsets.only(bottom: 6),
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
                               decoration: BoxDecoration(
                                 color: color.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(999),
@@ -273,7 +309,9 @@ class TimelineScheduleCard extends StatelessWidget {
                                 ),
                               ),
                             ),
-                          StatusBadge.fromStatus(_aggregateStatus(reservations)),
+                          StatusBadge.fromStatus(
+                            _aggregateStatus(reservations),
+                          ),
                         ],
                       ),
                     ],
@@ -288,9 +326,15 @@ class TimelineScheduleCard extends StatelessWidget {
   }
 
   String _buildStatusSummary(List<Reservation> reservations) {
-    final pending = reservations.where((reservation) => reservation.status == 'PENDING').length;
-    final confirmed = reservations.where((reservation) => reservation.status == 'CONFIRMED').length;
-    final completed = reservations.where((reservation) => reservation.status == 'COMPLETED').length;
+    final pending = reservations
+        .where((reservation) => reservation.status == 'PENDING')
+        .length;
+    final confirmed = reservations
+        .where((reservation) => reservation.status == 'CONFIRMED')
+        .length;
+    final completed = reservations
+        .where((reservation) => reservation.status == 'COMPLETED')
+        .length;
     final labels = <String>[];
     if (pending > 0) labels.add('대기 $pending');
     if (confirmed > 0) labels.add('확정 $confirmed');
@@ -318,9 +362,11 @@ class EmptySlotCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final resolvedTitle = title ?? (isPast ? '지난 빈 타임' : '예약 가능한 빈 타임');
-    final resolvedSubtitle = subtitle ?? (isPast
-        ? '이미 지난 시간대입니다'
-        : onTap != null
+    final resolvedSubtitle =
+        subtitle ??
+        (isPast
+            ? '이미 지난 시간대입니다'
+            : onTap != null
             ? '눌러서 예약 마감 처리'
             : '현재 예약 가능한 시간대입니다');
     return Padding(
@@ -361,7 +407,10 @@ class EmptySlotCard extends StatelessWidget {
               child: GestureDetector(
                 onTap: onTap,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
                     color: isPast
                         ? Colors.grey.shade100
@@ -380,7 +429,9 @@ class EmptySlotCard extends StatelessWidget {
                         backgroundColor: Colors.grey.shade100,
                         child: Icon(
                           Icons.event_available_rounded,
-                          color: isPast ? Colors.grey.shade500 : Colors.grey.shade400,
+                          color: isPast
+                              ? Colors.grey.shade500
+                              : Colors.grey.shade400,
                           size: 18,
                         ),
                       ),
@@ -437,10 +488,20 @@ Color _timelineStatusColor(String status) {
 }
 
 String _aggregateStatus(List<Reservation> reservations) {
-  if (reservations.any((reservation) => reservation.status == 'PENDING')) return 'PENDING';
-  if (reservations.any((reservation) => reservation.status == 'CONFIRMED')) return 'CONFIRMED';
-  if (reservations.any((reservation) => reservation.status == 'COMPLETED')) return 'COMPLETED';
-  if (reservations.any((reservation) => reservation.status == 'NO_SHOW')) return 'NO_SHOW';
-  if (reservations.any((reservation) => reservation.status == 'CANCELLED')) return 'CANCELLED';
+  if (reservations.any((reservation) => reservation.status == 'PENDING')) {
+    return 'PENDING';
+  }
+  if (reservations.any((reservation) => reservation.status == 'CONFIRMED')) {
+    return 'CONFIRMED';
+  }
+  if (reservations.any((reservation) => reservation.status == 'COMPLETED')) {
+    return 'COMPLETED';
+  }
+  if (reservations.any((reservation) => reservation.status == 'NO_SHOW')) {
+    return 'NO_SHOW';
+  }
+  if (reservations.any((reservation) => reservation.status == 'CANCELLED')) {
+    return 'CANCELLED';
+  }
   return reservations.first.status;
 }

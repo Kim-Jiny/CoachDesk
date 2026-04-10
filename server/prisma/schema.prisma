@@ -15,6 +15,9 @@ model Organization {
   logoUrl            String?
   reservationNoticeText String?
   reservationNoticeImageUrl String?
+  reservationOpenDaysBefore Int        @default(30)
+  reservationOpenHoursBefore Int       @default(0)
+  reservationCancelDeadlineMinutes Int @default(120)
   inviteCode         String            @unique
   bookingMode        BookingMode       @default(PRIVATE)
   reservationPolicy  ReservationPolicy @default(AUTO_CONFIRM)
@@ -52,6 +55,7 @@ model User {
   phone        String?
   profileImage String?
   fcmToken     String?
+  notificationPreferences String?
   googleId     String?  @unique
   appleId      String?  @unique
   createdAt    DateTime @default(now())
@@ -143,6 +147,7 @@ model MemberAccount {
   password  String
   name      String
   fcmToken  String?
+  notificationPreferences String?
   googleId  String?  @unique
   appleId   String?  @unique
   createdAt DateTime @default(now())
@@ -165,6 +170,7 @@ model Schedule {
   slotDuration   Int          @default(60) // minutes
   breakMinutes   Int          @default(0)
   maxCapacity    Int          @default(1)
+  isPublic       Boolean      @default(false)
   isActive       Boolean      @default(true)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
@@ -184,6 +190,7 @@ model ScheduleOverride {
   slotDuration   Int?
   breakMinutes   Int?
   maxCapacity    Int?
+  isPublic       Boolean?
   createdAt      DateTime     @default(now())
 
   @@index([organizationId, date])
@@ -193,6 +200,8 @@ model ScheduleOverride {
 enum OverrideType {
   OPEN
   CLOSED
+  VISIBLE
+  HIDDEN
 }
 
 // ─── Reservation (예약) ────────────────────────────────────

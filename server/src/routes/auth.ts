@@ -18,6 +18,7 @@ import {
 import { findFirstScheduleCompat, findFirstScheduleOverrideCompat, findScheduleOverridesCompat } from '../utils/schedule-access';
 import { isTimeRangeClosed } from '../utils/slot-blocking';
 import { findGeneratedSlot, getAvailableSlots } from '../utils/slot-service';
+import { canCancelAt, canReserveAt } from '../utils/reservation-policy';
 import { emitReservationCreated, emitReservationCancelled } from '../socket/emitters';
 import { serializeReservation } from './reservation';
 import {
@@ -25,6 +26,11 @@ import {
   listMemberPackagesCompat,
   updateMemberPackagePauseCompat,
 } from '../utils/member-package-access';
+import {
+  parseNotificationPreferences,
+  stringifyNotificationPreferences,
+  shouldSendPushForType,
+} from '../utils/notification-preferences';
 
 function buildReservationStatusMessage(status: string, date: string, startTime: string) {
   if (status === 'PENDING') {
@@ -47,7 +53,30 @@ function calculatePauseDays(startDate: string, endDate: string) {
   return Math.floor(diffMs / (24 * 60 * 60 * 1000)) + 1;
 }
 
+function isOverlappingTimeRange(
+  leftStart: string,
+  leftEnd: string,
+  rightStart: string,
+  rightEnd: string,
+) {
+  const leftStartMinutes =
+    Number(leftStart.slice(0, 2)) * 60 + Number(leftStart.slice(3, 5));
+  const leftEndMinutes =
+    Number(leftEnd.slice(0, 2)) * 60 + Number(leftEnd.slice(3, 5));
+  const rightStartMinutes =
+    Number(rightStart.slice(0, 2)) * 60 + Number(rightStart.slice(3, 5));
+  const rightEndMinutes =
+    Number(rightEnd.slice(0, 2)) * 60 + Number(rightEnd.slice(3, 5));
+  return leftStartMinutes < rightEndMinutes && leftEndMinutes > rightStartMinutes;
+}
+
 const router = Router();
+const notificationPreferencesSchema = z.object({
+  reservation: z.boolean(),
+  chat: z.boolean(),
+  package: z.boolean(),
+  general: z.boolean(),
+});
 
 function toOrganizationPayload(user: {
   memberships: Array<{
@@ -587,6 +616,9 @@ router.get('/member/studios/:orgId/reservation-notice', authMiddleware, async (r
         name: true,
         reservationNoticeText: true,
         reservationNoticeImageUrl: true,
+        reservationOpenDaysBefore: true,
+        reservationOpenHoursBefore: true,
+        reservationCancelDeadlineMinutes: true,
       },
     });
 
@@ -600,6 +632,9 @@ router.get('/member/studios/:orgId/reservation-notice', authMiddleware, async (r
       organizationName: organization.name,
       reservationNoticeText: organization.reservationNoticeText,
       reservationNoticeImageUrl: organization.reservationNoticeImageUrl,
+      reservationOpenDaysBefore: organization.reservationOpenDaysBefore,
+      reservationOpenHoursBefore: organization.reservationOpenHoursBefore,
+      reservationCancelDeadlineMinutes: organization.reservationCancelDeadlineMinutes,
     });
   } catch (err) {
     console.error('Member reservation notice error:', err);
@@ -621,13 +656,37 @@ router.get('/member/studios/:orgId/slots', authMiddleware, async (req: Request, 
     });
     if (!member) { res.status(403).json({ error: 'Not a member of this studio' }); return; }
 
-    const slots = await getAvailableSlots({
-      organizationId: orgId,
-      date,
-      includeCoachNames: true,
-    });
+    const [slots, organization] = await Promise.all([
+      getAvailableSlots({
+        organizationId: orgId,
+        date,
+        includeCoachNames: true,
+      }),
+      prisma.organization.findUnique({
+        where: { id: orgId },
+        select: {
+          reservationOpenDaysBefore: true,
+          reservationOpenHoursBefore: true,
+        },
+      }),
+    ]);
 
-    res.json(slots);
+    if (!organization) {
+      res.status(404).json({ error: 'Organization not found' });
+      return;
+    }
+
+    res.json(
+      slots
+          .filter((slot) => slot.isPublic)
+          .filter((slot) =>
+            canReserveAt(date, slot.startTime, {
+              reservationOpenDaysBefore: organization.reservationOpenDaysBefore,
+              reservationOpenHoursBefore: organization.reservationOpenHoursBefore,
+              reservationCancelDeadlineMinutes: 0,
+            }),
+          ),
+    );
   } catch (err) {
     console.error('Member get slots error:', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -655,11 +714,24 @@ router.post('/member/reserve', authMiddleware, async (req: Request, res: Respons
       }),
       prisma.organization.findUnique({
         where: { id: body.organizationId },
-        select: { reservationPolicy: true },
+        select: {
+          reservationPolicy: true,
+          reservationOpenDaysBefore: true,
+          reservationOpenHoursBefore: true,
+        },
       }),
     ]);
     if (!member) { res.status(403).json({ error: 'Not a member of this studio' }); return; }
     if (!organization) { res.status(404).json({ error: 'Organization not found' }); return; }
+
+    if (!canReserveAt(body.date, body.startTime, {
+      reservationOpenDaysBefore: organization.reservationOpenDaysBefore,
+      reservationOpenHoursBefore: organization.reservationOpenHoursBefore,
+      reservationCancelDeadlineMinutes: 0,
+    })) {
+      res.status(409).json({ error: '아직 예약 가능한 시간이 아니거나 이미 시작된 수업입니다' });
+      return;
+    }
 
     const targetDate = parseDateOnly(body.date);
     const dayOfWeek = getKstDayOfWeek(body.date);
@@ -735,16 +807,24 @@ router.post('/member/reserve', authMiddleware, async (req: Request, res: Respons
       if (duplicate) throw new Error('DUPLICATE');
 
       // Check capacity
-      const booked = await tx.reservation.count({
+      const overlappingReservations = await tx.reservation.findMany({
         where: {
           organizationId: body.organizationId,
           coachId: body.coachId,
           date: targetDate,
-          startTime: body.startTime,
           status: { in: ['PENDING', 'CONFIRMED'] },
         },
+        select: { startTime: true, endTime: true },
       });
-      if (booked >= maxCapacity!) throw new Error('FULL');
+      const bookedOverlaps = overlappingReservations.filter((reservation) =>
+        isOverlappingTimeRange(
+          body.startTime,
+          body.endTime,
+          reservation.startTime,
+          reservation.endTime,
+        ),
+      ).length;
+      if (bookedOverlaps >= maxCapacity!) throw new Error('FULL');
 
       return tx.reservation.create({
         data: {
@@ -769,8 +849,14 @@ router.post('/member/reserve', authMiddleware, async (req: Request, res: Respons
     const coachMessage = buildReservationStatusMessage(finalStatus, body.date, body.startTime);
 
     // Push notification to coach
-    const coach = await prisma.user.findUnique({ where: { id: body.coachId }, select: { fcmToken: true, id: true } });
-    if (coach?.fcmToken) {
+    const coach = await prisma.user.findUnique({
+      where: { id: body.coachId },
+      select: { fcmToken: true, id: true, notificationPreferences: true },
+    });
+    if (
+      coach?.fcmToken &&
+      shouldSendPushForType(coach.notificationPreferences, 'NEW_RESERVATION')
+    ) {
       const memberAccount = await prisma.memberAccount.findUnique({ where: { id: memberAccountId }, select: { name: true } });
       sendPush(
         coach.fcmToken,
@@ -832,6 +918,30 @@ router.delete('/member/reservations/:id', authMiddleware, async (req: Request, r
       return;
     }
 
+    const organization = await prisma.organization.findUnique({
+      where: { id: reservation.organizationId },
+      select: { reservationCancelDeadlineMinutes: true },
+    });
+    if (!organization) {
+      res.status(404).json({ error: 'Organization not found' });
+      return;
+    }
+
+    if (!canCancelAt(
+      formatDateOnly(reservation.date),
+      reservation.startTime,
+      {
+        reservationOpenDaysBefore: 0,
+        reservationOpenHoursBefore: 0,
+        reservationCancelDeadlineMinutes: organization.reservationCancelDeadlineMinutes,
+      },
+    )) {
+      res.status(409).json({
+        error: `수업 ${organization.reservationCancelDeadlineMinutes}분 전까지만 취소할 수 있습니다`,
+      });
+      return;
+    }
+
     const updatedReservation = await prisma.reservation.update({
       where: { id: reservationId },
       data: { status: 'CANCELLED' },
@@ -850,8 +960,17 @@ router.delete('/member/reservations/:id', authMiddleware, async (req: Request, r
     );
 
     // Push notification to coach
-    const coach = await prisma.user.findUnique({ where: { id: reservation.coachId }, select: { fcmToken: true } });
-    if (coach?.fcmToken) {
+    const coach = await prisma.user.findUnique({
+      where: { id: reservation.coachId },
+      select: { fcmToken: true, notificationPreferences: true },
+    });
+    if (
+      coach?.fcmToken &&
+      shouldSendPushForType(
+        coach.notificationPreferences,
+        'RESERVATION_CANCELLED',
+      )
+    ) {
       const memberAccount = await prisma.memberAccount.findUnique({ where: { id: memberAccountId }, select: { name: true } });
       const dateStr = formatDateOnly(reservation.date);
       sendPush(
@@ -1184,6 +1303,39 @@ router.put('/fcm-token', authMiddleware, async (req: Request, res: Response) => 
   }
 });
 
+router.get('/notification-preferences', authMiddleware, async (_req: Request, res: Response) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: _req.user!.userId },
+      select: { notificationPreferences: true },
+    });
+    res.json(parseNotificationPreferences(user?.notificationPreferences));
+  } catch (err) {
+    console.error('Notification preferences fetch error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.put('/notification-preferences', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const body = notificationPreferencesSchema.parse(req.body);
+    await prisma.user.update({
+      where: { id: req.user!.userId },
+      data: {
+        notificationPreferences: stringifyNotificationPreferences(body),
+      },
+    });
+    res.json(body);
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: err.errors });
+      return;
+    }
+    console.error('Notification preferences update error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ─── FCM Token Registration (MemberAccount) ─────────────
 router.put('/member/fcm-token', authMiddleware, async (req: Request, res: Response) => {
   try {
@@ -1199,6 +1351,39 @@ router.put('/member/fcm-token', authMiddleware, async (req: Request, res: Respon
       return;
     }
     console.error('Member FCM token update error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/member/notification-preferences', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const memberAccount = await prisma.memberAccount.findUnique({
+      where: { id: req.user!.userId },
+      select: { notificationPreferences: true },
+    });
+    res.json(parseNotificationPreferences(memberAccount?.notificationPreferences));
+  } catch (err) {
+    console.error('Member notification preferences fetch error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.put('/member/notification-preferences', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const body = notificationPreferencesSchema.parse(req.body);
+    await prisma.memberAccount.update({
+      where: { id: req.user!.userId },
+      data: {
+        notificationPreferences: stringifyNotificationPreferences(body),
+      },
+    });
+    res.json(body);
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: err.errors });
+      return;
+    }
+    console.error('Member notification preferences update error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

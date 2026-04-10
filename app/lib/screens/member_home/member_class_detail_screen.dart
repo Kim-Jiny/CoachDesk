@@ -2,9 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/fcm_service.dart';
 import '../../core/theme.dart';
 import '../../models/member_booking.dart';
 import '../../providers/member_auth_provider.dart';
+
+String _buildReservationPolicySummary(MemberReservationNotice notice) {
+  final openParts = <String>[];
+  if (notice.reservationOpenDaysBefore > 0) {
+    openParts.add('${notice.reservationOpenDaysBefore}일');
+  }
+  if (notice.reservationOpenHoursBefore > 0) {
+    openParts.add('${notice.reservationOpenHoursBefore}시간');
+  }
+
+  final openText = openParts.isEmpty
+      ? '수업 시작 직전부터'
+      : '수업 ${openParts.join(' ')} 전부터';
+  return '$openText 예약 가능 · 수업 ${notice.reservationCancelDeadlineMinutes}분 전까지 취소 가능';
+}
 
 class MemberClassDetailScreen extends ConsumerStatefulWidget {
   final String orgId;
@@ -30,11 +46,31 @@ class _MemberClassDetailScreenState
   bool _isLoadingSlots = false;
   bool _isLoadingReservations = false;
   bool _isLoadingNotice = false;
+  AppLifecycleListener? _lifecycleListener;
 
   @override
   void initState() {
     super.initState();
     _selectedDate = DateTime.now();
+    _lifecycleListener = AppLifecycleListener(onResume: _handleResume);
+    FcmService.addReservationSyncListener(_handleReservationSync);
+    _loadData();
+  }
+
+  @override
+  void dispose() {
+    FcmService.removeReservationSyncListener(_handleReservationSync);
+    _lifecycleListener?.dispose();
+    super.dispose();
+  }
+
+  void _handleResume() {
+    if (!mounted) return;
+    _loadData();
+  }
+
+  void _handleReservationSync() {
+    if (!mounted) return;
     _loadData();
   }
 
@@ -180,17 +216,17 @@ class _MemberClassDetailScreenState
     );
     if (confirmed != true) return;
 
-    final success = await ref
+    final errorMessage = await ref
         .read(memberAuthProvider.notifier)
         .cancelReservation(reservation.id);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(success ? '예약이 취소되었습니다' : '취소에 실패했습니다'),
+          content: Text(errorMessage ?? '예약이 취소되었습니다'),
           behavior: SnackBarBehavior.floating,
         ),
       );
-      if (success) _loadData();
+      if (errorMessage == null) _loadData();
     }
   }
 
@@ -447,6 +483,18 @@ class _MemberClassDetailScreenState
                             ),
                           ),
                         ],
+                      ),
+                    ),
+                  if (_reservationNotice != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        _buildReservationPolicySummary(_reservationNotice!),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade600,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ),
                 ],
@@ -755,6 +803,15 @@ class _ReservationNoticeDialogState extends State<_ReservationNoticeDialog> {
                   fontSize: 13,
                   color: Colors.grey.shade700,
                   height: 1.45,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _buildReservationPolicySummary(notice),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey.shade600,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
               if (hasImage) ...[

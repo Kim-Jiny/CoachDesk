@@ -29,6 +29,18 @@ class ReservationState {
   }
 }
 
+class ReservationCreateResult {
+  final bool success;
+  final String? error;
+  final String? errorCode;
+
+  const ReservationCreateResult({
+    required this.success,
+    this.error,
+    this.errorCode,
+  });
+}
+
 class ReservationNotifier extends Notifier<ReservationState> {
   @override
   ReservationState build() {
@@ -125,12 +137,20 @@ class ReservationNotifier extends Notifier<ReservationState> {
     }
   }
 
-  Future<bool> createReservation(Map<String, dynamic> data) async {
+  Future<ReservationCreateResult> createReservation(
+    Map<String, dynamic> data,
+  ) async {
     try {
       await _dio.post('/reservations', data: data);
-      return true;
+      return const ReservationCreateResult(success: true);
+    } on DioException catch (e) {
+      return ReservationCreateResult(
+        success: false,
+        error: e.response?.data?['error'] as String?,
+        errorCode: e.response?.data?['code'] as String?,
+      );
     } catch (_) {
-      return false;
+      return const ReservationCreateResult(success: false, error: '예약에 실패했습니다');
     }
   }
 
@@ -146,6 +166,22 @@ class ReservationNotifier extends Notifier<ReservationState> {
   Future<bool> completeReservation(String id, Map<String, dynamic> data) async {
     try {
       await _dio.post('/reservations/$id/complete', data: data);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> updateMemo(
+    String id, {
+    required String quickMemo,
+    required String memo,
+  }) async {
+    try {
+      await _dio.patch(
+        '/reservations/$id/memo',
+        data: {'quickMemo': quickMemo, 'memo': memo},
+      );
       return true;
     } catch (_) {
       return false;

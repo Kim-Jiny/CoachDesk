@@ -9,7 +9,8 @@ class ScheduleSettingScreen extends ConsumerStatefulWidget {
   const ScheduleSettingScreen({super.key});
 
   @override
-  ConsumerState<ScheduleSettingScreen> createState() => _ScheduleSettingScreenState();
+  ConsumerState<ScheduleSettingScreen> createState() =>
+      _ScheduleSettingScreenState();
 }
 
 class _ScheduleSettingScreenState extends ConsumerState<ScheduleSettingScreen> {
@@ -35,16 +36,21 @@ class _ScheduleSettingScreenState extends ConsumerState<ScheduleSettingScreen> {
       final end = now.add(const Duration(days: 90));
       final responses = await Future.wait([
         dio.get('/schedules'),
-        dio.get('/schedules/overrides', queryParameters: {
-          'startDate': DateFormat('yyyy-MM-dd').format(now),
-          'endDate': DateFormat('yyyy-MM-dd').format(end),
-        }),
+        dio.get(
+          '/schedules/overrides',
+          queryParameters: {
+            'startDate': DateFormat('yyyy-MM-dd').format(now),
+            'endDate': DateFormat('yyyy-MM-dd').format(end),
+          },
+        ),
         dio.get('/organizations/mine'),
       ]);
       setState(() {
         _schedules = responses[0].data as List;
         _overrides = (responses[1].data as List)
-            .map((json) => ScheduleOverride.fromJson(json as Map<String, dynamic>))
+            .map(
+              (json) => ScheduleOverride.fromJson(json as Map<String, dynamic>),
+            )
             .toList();
         _orgData = responses[2].data as Map<String, dynamic>;
         _isLoading = false;
@@ -66,9 +72,10 @@ class _ScheduleSettingScreenState extends ConsumerState<ScheduleSettingScreen> {
     setState(() => _isUpdatingReservationPolicy = true);
     try {
       final dio = ref.read(dioProvider);
-      await dio.put('/organizations/${org['id']}', data: {
-        'reservationPolicy': policy,
-      });
+      await dio.put(
+        '/organizations/${org['id']}',
+        data: {'reservationPolicy': policy},
+      );
       await _loadData();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -82,9 +89,9 @@ class _ScheduleSettingScreenState extends ConsumerState<ScheduleSettingScreen> {
       );
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('예약 정책 변경에 실패했습니다')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('예약 정책 변경에 실패했습니다')));
     } finally {
       if (mounted) {
         setState(() => _isUpdatingReservationPolicy = false);
@@ -105,9 +112,9 @@ class _ScheduleSettingScreenState extends ConsumerState<ScheduleSettingScreen> {
       _loadData();
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('추가에 실패했습니다')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('추가에 실패했습니다')));
       }
     }
   }
@@ -125,9 +132,9 @@ class _ScheduleSettingScreenState extends ConsumerState<ScheduleSettingScreen> {
       _loadData();
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('수정에 실패했습니다')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('수정에 실패했습니다')));
       }
     }
   }
@@ -139,8 +146,14 @@ class _ScheduleSettingScreenState extends ConsumerState<ScheduleSettingScreen> {
         title: const Text('삭제'),
         content: const Text('이 시간대를 삭제하시겠습니까?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('삭제')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('취소'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('삭제'),
+          ),
         ],
       ),
     );
@@ -166,9 +179,9 @@ class _ScheduleSettingScreenState extends ConsumerState<ScheduleSettingScreen> {
       await _loadData();
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('예외 일정 추가에 실패했습니다')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('예외 일정 추가에 실패했습니다')));
     }
   }
 
@@ -179,8 +192,14 @@ class _ScheduleSettingScreenState extends ConsumerState<ScheduleSettingScreen> {
         title: const Text('예외 일정 삭제'),
         content: const Text('이 예외 일정을 삭제하시겠습니까?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('취소')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('삭제')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('취소'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('삭제'),
+          ),
         ],
       ),
     );
@@ -192,22 +211,22 @@ class _ScheduleSettingScreenState extends ConsumerState<ScheduleSettingScreen> {
       await _loadData();
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('예외 일정 삭제에 실패했습니다')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('예외 일정 삭제에 실패했습니다')));
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('가용시간 설정')),
+      appBar: AppBar(title: const Text('수업시간 설정')),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
               onRefresh: _loadData,
               child: ListView(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 132),
                 children: [
                   if (_orgData != null) ...[
                     Container(
@@ -231,21 +250,29 @@ class _ScheduleSettingScreenState extends ConsumerState<ScheduleSettingScreen> {
                               const Expanded(
                                 child: Text(
                                   '예약 처리 방식',
-                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                               ),
                               if (_isUpdatingReservationPolicy)
                                 const SizedBox(
                                   width: 18,
                                   height: 18,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
                                 ),
                             ],
                           ),
                           const SizedBox(height: 6),
                           Text(
                             '회원이 바로 예약 확정될지, 신청 후 관리자가 승인할지 설정합니다.',
-                            style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                            style: TextStyle(
+                              color: Colors.grey.shade600,
+                              fontSize: 13,
+                            ),
                           ),
                           const SizedBox(height: 14),
                           SegmentedButton<String>(
@@ -262,12 +289,16 @@ class _ScheduleSettingScreenState extends ConsumerState<ScheduleSettingScreen> {
                               ),
                             ],
                             selected: {
-                              (_orgData!['reservationPolicy'] as String?) ?? 'AUTO_CONFIRM',
+                              (_orgData!['reservationPolicy'] as String?) ??
+                                  'AUTO_CONFIRM',
                             },
                             onSelectionChanged: _canEditReservationPolicy
                                 ? (selection) {
                                     final next = selection.first;
-                                    if (next == _orgData!['reservationPolicy']) return;
+                                    if (next ==
+                                        _orgData!['reservationPolicy']) {
+                                      return;
+                                    }
                                     _updateReservationPolicy(next);
                                   }
                                 : null,
@@ -279,7 +310,9 @@ class _ScheduleSettingScreenState extends ConsumerState<ScheduleSettingScreen> {
                   ],
                   Text(
                     '주간 가용시간',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   if (_schedules.isEmpty)
@@ -289,11 +322,15 @@ class _ScheduleSettingScreenState extends ConsumerState<ScheduleSettingScreen> {
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(16),
                       ),
-                      child: Text('설정된 가용시간이 없습니다', style: TextStyle(color: Colors.grey.shade500)),
+                      child: Text(
+                        '설정된 가용시간이 없습니다',
+                        style: TextStyle(color: Colors.grey.shade500),
+                      ),
                     )
                   else
                     ..._schedules.map((schedule) {
                       final s = schedule as Map<String, dynamic>;
+                      final isPublic = s['isPublic'] as bool? ?? false;
                       return Card(
                         child: ListTile(
                           leading: CircleAvatar(
@@ -303,10 +340,14 @@ class _ScheduleSettingScreenState extends ConsumerState<ScheduleSettingScreen> {
                           subtitle: Text(
                             '${s['slotDuration']}분 수업'
                             '${((s['breakMinutes'] as int?) ?? 0) > 0 ? ' · 쉬는시간 ${s['breakMinutes']}분' : ''}'
-                            ' · 한 타임당 정원 ${s['maxCapacity']}명',
+                            ' · 한 타임당 정원 ${s['maxCapacity']}명'
+                            ' · ${isPublic ? '공개' : '비공개'}',
                           ),
                           trailing: IconButton(
-                            icon: const Icon(Icons.delete_outline, color: Colors.red),
+                            icon: const Icon(
+                              Icons.delete_outline,
+                              color: Colors.red,
+                            ),
                             onPressed: () => _deleteSchedule(s['id'] as String),
                           ),
                           onTap: () => _editSchedule(s),
@@ -319,12 +360,16 @@ class _ScheduleSettingScreenState extends ConsumerState<ScheduleSettingScreen> {
                       Expanded(
                         child: Text(
                           '예외 일정',
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.bold),
                         ),
                       ),
                       TextButton.icon(
                         onPressed: _addOverride,
-                        icon: const Icon(Icons.event_available_outlined, size: 18),
+                        icon: const Icon(
+                          Icons.event_available_outlined,
+                          size: 18,
+                        ),
                         label: const Text('예외 추가'),
                       ),
                     ],
@@ -337,33 +382,65 @@ class _ScheduleSettingScreenState extends ConsumerState<ScheduleSettingScreen> {
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(16),
                       ),
-                      child: Text('등록된 예외 일정이 없습니다', style: TextStyle(color: Colors.grey.shade500)),
+                      child: Text(
+                        '등록된 예외 일정이 없습니다',
+                        style: TextStyle(color: Colors.grey.shade500),
+                      ),
                     )
                   else
                     ..._overrides.map((override) {
                       final isOpen = override.type == 'OPEN';
+                      final isVisibility =
+                          override.type == 'VISIBLE' ||
+                          override.type == 'HIDDEN';
                       return Card(
                         child: ListTile(
                           leading: CircleAvatar(
-                            backgroundColor: isOpen ? Colors.green.shade100 : Colors.red.shade100,
+                            backgroundColor: isOpen
+                                ? Colors.green.shade100
+                                : isVisibility
+                                ? Colors.blue.shade100
+                                : Colors.red.shade100,
                             child: Icon(
-                              isOpen ? Icons.event_available : Icons.block,
-                              color: isOpen ? Colors.green.shade700 : Colors.red.shade700,
+                              isOpen
+                                  ? Icons.event_available
+                                  : override.type == 'VISIBLE'
+                                  ? Icons.visibility_outlined
+                                  : override.type == 'HIDDEN'
+                                  ? Icons.visibility_off_outlined
+                                  : Icons.block,
+                              color: isOpen
+                                  ? Colors.green.shade700
+                                  : isVisibility
+                                  ? Colors.blue.shade700
+                                  : Colors.red.shade700,
                             ),
                           ),
                           title: Text(
-                            '${DateFormat('M월 d일 (E)', 'ko').format(override.date)} ${isOpen ? '추가 오픈' : '휴무'}',
+                            '${DateFormat('M월 d일 (E)', 'ko').format(override.date)} ${isOpen
+                                ? '추가 오픈'
+                                : override.type == 'VISIBLE'
+                                ? '공개 전환'
+                                : override.type == 'HIDDEN'
+                                ? '비공개 전환'
+                                : '휴무'}',
                           ),
                           subtitle: Text(
                             isOpen
                                 ? '${override.startTime} - ${override.endTime}'
-                                  ' / ${override.slotDuration ?? 60}분 수업'
-                                  '${(override.breakMinutes ?? 0) > 0 ? ' / 쉬는시간 ${override.breakMinutes}분' : ''}'
-                                  ' / 한 타임당 정원 ${override.maxCapacity ?? 1}명'
+                                      ' / ${override.slotDuration ?? 60}분 수업'
+                                      '${(override.breakMinutes ?? 0) > 0 ? ' / 쉬는시간 ${override.breakMinutes}분' : ''}'
+                                      ' / 한 타임당 정원 ${override.maxCapacity ?? 1}명'
+                                      ' / ${override.isPublic == true ? '공개' : '비공개'}'
+                                : isVisibility
+                                ? '${override.startTime} - ${override.endTime} / ${override.type == 'VISIBLE' ? '해당 시간만 공개' : '해당 시간만 비공개'}'
                                 : '해당 날짜 예약 불가',
                           ),
                           trailing: IconButton(
-                            icon: const Icon(Icons.delete_outline, color: Colors.red),
+                            icon: const Icon(
+                              Icons.delete_outline,
+                              color: Colors.red,
+                            ),
                             onPressed: () => _deleteOverride(override.id),
                           ),
                         ),
@@ -382,10 +459,11 @@ class _ScheduleSettingScreenState extends ConsumerState<ScheduleSettingScreen> {
             child: const Icon(Icons.event_available),
           ),
           const SizedBox(height: 12),
-          FloatingActionButton(
+          FloatingActionButton.extended(
             heroTag: 'schedule_fab',
             onPressed: _addSchedule,
-            child: const Icon(Icons.add),
+            icon: const Icon(Icons.add),
+            label: const Text('수업시간 추가'),
           ),
         ],
       ),
@@ -408,8 +486,10 @@ class _OverrideDialogState extends State<_OverrideDialog> {
   int _slotDuration = 60;
   int _breakMinutes = 0;
   int _maxCapacity = 1;
+  bool _isPublic = false;
 
-  String _fmt(TimeOfDay t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+  String _fmt(TimeOfDay t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
   @override
   Widget build(BuildContext context) {
@@ -443,6 +523,8 @@ class _OverrideDialogState extends State<_OverrideDialog> {
               items: const [
                 DropdownMenuItem(value: 'CLOSED', child: Text('휴무')),
                 DropdownMenuItem(value: 'OPEN', child: Text('추가 오픈')),
+                DropdownMenuItem(value: 'VISIBLE', child: Text('공개로 전환')),
+                DropdownMenuItem(value: 'HIDDEN', child: Text('비공개로 전환')),
               ],
               onChanged: (value) {
                 if (value != null) {
@@ -450,7 +532,7 @@ class _OverrideDialogState extends State<_OverrideDialog> {
                 }
               },
             ),
-            if (_type == 'OPEN') ...[
+            if (_type == 'OPEN' || _type == 'VISIBLE' || _type == 'HIDDEN') ...[
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -460,7 +542,10 @@ class _OverrideDialogState extends State<_OverrideDialog> {
                       title: const Text('시작', style: TextStyle(fontSize: 13)),
                       subtitle: Text(_fmt(_startTime)),
                       onTap: () async {
-                        final t = await showTimePicker(context: context, initialTime: _startTime);
+                        final t = await showTimePicker(
+                          context: context,
+                          initialTime: _startTime,
+                        );
                         if (t != null) setState(() => _startTime = t);
                       },
                     ),
@@ -471,52 +556,89 @@ class _OverrideDialogState extends State<_OverrideDialog> {
                       title: const Text('종료', style: TextStyle(fontSize: 13)),
                       subtitle: Text(_fmt(_endTime)),
                       onTap: () async {
-                        final t = await showTimePicker(context: context, initialTime: _endTime);
+                        final t = await showTimePicker(
+                          context: context,
+                          initialTime: _endTime,
+                        );
                         if (t != null) setState(() => _endTime = t);
                       },
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<int>(
-                initialValue: _slotDuration,
-                decoration: const InputDecoration(labelText: '슬롯 시간'),
-                items: const [30, 45, 60, 90, 120]
-                    .map((value) => DropdownMenuItem(value: value, child: Text('$value분')))
-                    .toList(),
-                onChanged: (value) => setState(() => _slotDuration = value ?? 60),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<int>(
-                initialValue: _breakMinutes,
-                decoration: const InputDecoration(labelText: '쉬는시간'),
-                items: const [0, 5, 10, 15, 20, 30]
-                    .map((value) => DropdownMenuItem(
+              if (_type == 'OPEN') ...[
+                const SizedBox(height: 12),
+                DropdownButtonFormField<int>(
+                  initialValue: _slotDuration,
+                  decoration: const InputDecoration(labelText: '슬롯 시간'),
+                  items: const [30, 45, 60, 90, 120]
+                      .map(
+                        (value) => DropdownMenuItem(
+                          value: value,
+                          child: Text('$value분'),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) =>
+                      setState(() => _slotDuration = value ?? 60),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<int>(
+                  initialValue: _breakMinutes,
+                  decoration: const InputDecoration(labelText: '쉬는시간'),
+                  items: const [0, 5, 10, 15, 20, 30]
+                      .map(
+                        (value) => DropdownMenuItem(
                           value: value,
                           child: Text(value == 0 ? '없음' : '$value분'),
-                        ))
-                    .toList(),
-                onChanged: (value) => setState(() => _breakMinutes = value ?? 0),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<int>(
-                initialValue: _maxCapacity,
-                decoration: const InputDecoration(labelText: '한 타임당 정원'),
-                items: List.generate(20, (i) => DropdownMenuItem(value: i + 1, child: Text('${i + 1}명'))),
-                onChanged: (value) => setState(() => _maxCapacity = value ?? 1),
-              ),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) =>
+                      setState(() => _breakMinutes = value ?? 0),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<int>(
+                  initialValue: _maxCapacity,
+                  decoration: const InputDecoration(labelText: '한 타임당 정원'),
+                  items: List.generate(
+                    20,
+                    (i) => DropdownMenuItem(
+                      value: i + 1,
+                      child: Text('${i + 1}명'),
+                    ),
+                  ),
+                  onChanged: (value) =>
+                      setState(() => _maxCapacity = value ?? 1),
+                ),
+                const SizedBox(height: 12),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('회원 앱에 공개'),
+                  subtitle: Text(
+                    _isPublic
+                        ? '회원이 이 추가 오픈 타임을 볼 수 있습니다'
+                        : '관리자 전용 타임으로 유지됩니다',
+                  ),
+                  value: _isPublic,
+                  onChanged: (value) => setState(() => _isPublic = value),
+                ),
+              ],
             ],
           ],
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('취소')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('취소'),
+        ),
         FilledButton(
           onPressed: () {
             final startMinutes = _startTime.hour * 60 + _startTime.minute;
             final endMinutes = _endTime.hour * 60 + _endTime.minute;
-            if (_type == 'OPEN' && startMinutes >= endMinutes) {
+            if ((_type == 'OPEN' || _type == 'VISIBLE' || _type == 'HIDDEN') &&
+                startMinutes >= endMinutes) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('시작시간이 종료시간보다 빨라야 합니다')),
               );
@@ -526,12 +648,15 @@ class _OverrideDialogState extends State<_OverrideDialog> {
             Navigator.pop(context, {
               'date': DateFormat('yyyy-MM-dd').format(_date),
               'type': _type,
-              if (_type == 'OPEN') ...{
+              if (_type == 'OPEN' ||
+                  _type == 'VISIBLE' ||
+                  _type == 'HIDDEN') ...{
                 'startTime': _fmt(_startTime),
                 'endTime': _fmt(_endTime),
-                'slotDuration': _slotDuration,
-                'breakMinutes': _breakMinutes,
-                'maxCapacity': _maxCapacity,
+                if (_type == 'OPEN') 'slotDuration': _slotDuration,
+                if (_type == 'OPEN') 'breakMinutes': _breakMinutes,
+                if (_type == 'OPEN') 'maxCapacity': _maxCapacity,
+                if (_type == 'OPEN') 'isPublic': _isPublic,
               },
             });
           },
@@ -559,6 +684,7 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
   late int _slotDuration;
   late int _breakMinutes;
   late int _maxCapacity;
+  late bool _isPublic;
   late final TextEditingController _slotDurationController;
   late final TextEditingController _breakMinutesController;
 
@@ -575,13 +701,22 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
     final s = widget.schedule;
     _dayOfWeek = s?['dayOfWeek'] as int? ?? 1;
     _selectedDays = {_dayOfWeek};
-    _startTime = s != null ? _parseTime(s['startTime'] as String) : const TimeOfDay(hour: 9, minute: 0);
-    _endTime = s != null ? _parseTime(s['endTime'] as String) : const TimeOfDay(hour: 18, minute: 0);
+    _startTime = s != null
+        ? _parseTime(s['startTime'] as String)
+        : const TimeOfDay(hour: 9, minute: 0);
+    _endTime = s != null
+        ? _parseTime(s['endTime'] as String)
+        : const TimeOfDay(hour: 18, minute: 0);
     _slotDuration = s?['slotDuration'] as int? ?? 60;
     _breakMinutes = s?['breakMinutes'] as int? ?? 0;
     _maxCapacity = s?['maxCapacity'] as int? ?? 1;
-    _slotDurationController = TextEditingController(text: _slotDuration.toString());
-    _breakMinutesController = TextEditingController(text: _breakMinutes.toString());
+    _isPublic = s?['isPublic'] as bool? ?? false;
+    _slotDurationController = TextEditingController(
+      text: _slotDuration.toString(),
+    );
+    _breakMinutesController = TextEditingController(
+      text: _breakMinutes.toString(),
+    );
   }
 
   @override
@@ -593,7 +728,8 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
 
   static const _dayNames = ['일', '월', '화', '수', '목', '금', '토'];
 
-  String _fmt(TimeOfDay t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+  String _fmt(TimeOfDay t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
   @override
   Widget build(BuildContext context) {
@@ -607,7 +743,13 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
               DropdownButtonFormField<int>(
                 initialValue: _dayOfWeek,
                 decoration: const InputDecoration(labelText: '요일'),
-                items: List.generate(7, (i) => DropdownMenuItem(value: i, child: Text('${_dayNames[i]}요일'))),
+                items: List.generate(
+                  7,
+                  (i) => DropdownMenuItem(
+                    value: i,
+                    child: Text('${_dayNames[i]}요일'),
+                  ),
+                ),
                 onChanged: (v) => setState(() => _dayOfWeek = v ?? 1),
               )
             else
@@ -618,7 +760,10 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
                     alignment: Alignment.centerLeft,
                     child: Text(
                       '요일',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -647,7 +792,10 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
                     alignment: Alignment.centerLeft,
                     child: Text(
                       '예: 월화수 또는 월수금처럼 한 번에 설정할 수 있습니다.',
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
                     ),
                   ),
                 ],
@@ -661,7 +809,10 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
                     title: const Text('시작', style: TextStyle(fontSize: 13)),
                     subtitle: Text(_fmt(_startTime)),
                     onTap: () async {
-                      final t = await showTimePicker(context: context, initialTime: _startTime);
+                      final t = await showTimePicker(
+                        context: context,
+                        initialTime: _startTime,
+                      );
                       if (t != null) setState(() => _startTime = t);
                     },
                   ),
@@ -672,7 +823,10 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
                     title: const Text('종료', style: TextStyle(fontSize: 13)),
                     subtitle: Text(_fmt(_endTime)),
                     onTap: () async {
-                      final t = await showTimePicker(context: context, initialTime: _endTime);
+                      final t = await showTimePicker(
+                        context: context,
+                        initialTime: _endTime,
+                      );
                       if (t != null) setState(() => _endTime = t);
                     },
                   ),
@@ -682,7 +836,10 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
             const SizedBox(height: 12),
             TextFormField(
               controller: _slotDurationController,
-              decoration: const InputDecoration(labelText: '수업 시간 (분)', hintText: '예: 60'),
+              decoration: const InputDecoration(
+                labelText: '수업 시간 (분)',
+                hintText: '예: 60',
+              ),
               keyboardType: TextInputType.number,
               onChanged: (v) {
                 final parsed = int.tryParse(v);
@@ -692,7 +849,10 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
             const SizedBox(height: 12),
             TextFormField(
               controller: _breakMinutesController,
-              decoration: const InputDecoration(labelText: '쉬는시간 (분)', hintText: '예: 10'),
+              decoration: const InputDecoration(
+                labelText: '쉬는시간 (분)',
+                hintText: '예: 10',
+              ),
               keyboardType: TextInputType.number,
               onChanged: (v) {
                 final parsed = int.tryParse(v);
@@ -703,23 +863,40 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
             DropdownButtonFormField<int>(
               initialValue: _maxCapacity,
               decoration: const InputDecoration(labelText: '한 타임당 정원'),
-              items: List.generate(20, (i) => DropdownMenuItem(value: i + 1, child: Text('${i + 1}명'))),
+              items: List.generate(
+                20,
+                (i) => DropdownMenuItem(value: i + 1, child: Text('${i + 1}명')),
+              ),
               onChanged: (v) => setState(() => _maxCapacity = v ?? 1),
+            ),
+            const SizedBox(height: 12),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('회원 앱에 공개'),
+              subtitle: Text(
+                _isPublic ? '회원이 예약 가능한 빈 타임으로 보게 됩니다' : '관리자 화면에서만 보입니다',
+              ),
+              value: _isPublic,
+              onChanged: (value) => setState(() => _isPublic = value),
             ),
           ],
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('취소')),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('취소'),
+        ),
         FilledButton(
           onPressed: () {
             if (!_isEditing && _selectedDays.isEmpty) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('요일을 하나 이상 선택해주세요')),
-              );
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('요일을 하나 이상 선택해주세요')));
               return;
             }
-            if (_startTime.hour * 60 + _startTime.minute >= _endTime.hour * 60 + _endTime.minute) {
+            if (_startTime.hour * 60 + _startTime.minute >=
+                _endTime.hour * 60 + _endTime.minute) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('시작시간이 종료시간보다 빨라야 합니다')),
               );
@@ -735,6 +912,7 @@ class _ScheduleDialogState extends State<_ScheduleDialog> {
               'slotDuration': _slotDuration,
               'breakMinutes': _breakMinutes,
               'maxCapacity': _maxCapacity,
+              'isPublic': _isPublic,
             });
           },
           child: Text(_isEditing ? '저장' : '추가'),

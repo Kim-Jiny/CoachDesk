@@ -58,12 +58,18 @@ class MemberReservationNotice {
   final String organizationName;
   final String? text;
   final String? imageUrl;
+  final int reservationOpenDaysBefore;
+  final int reservationOpenHoursBefore;
+  final int reservationCancelDeadlineMinutes;
 
   const MemberReservationNotice({
     required this.organizationId,
     required this.organizationName,
     this.text,
     this.imageUrl,
+    this.reservationOpenDaysBefore = 30,
+    this.reservationOpenHoursBefore = 0,
+    this.reservationCancelDeadlineMinutes = 120,
   });
 
   bool get hasContent =>
@@ -76,6 +82,12 @@ class MemberReservationNotice {
       organizationName: json['organizationName'] as String? ?? '',
       text: json['reservationNoticeText'] as String?,
       imageUrl: json['reservationNoticeImageUrl'] as String?,
+      reservationOpenDaysBefore:
+          json['reservationOpenDaysBefore'] as int? ?? 30,
+      reservationOpenHoursBefore:
+          json['reservationOpenHoursBefore'] as int? ?? 0,
+      reservationCancelDeadlineMinutes:
+          json['reservationCancelDeadlineMinutes'] as int? ?? 120,
     );
   }
 }
@@ -155,6 +167,9 @@ class MemberAuthNotifier extends Notifier<MemberAuthState> {
         email: account['email'] as String,
       );
 
+      try {
+        await FcmService.syncNotificationPreferences(isMember: true);
+      } catch (_) {}
       await fetchMyClasses();
     } catch (_) {
       await ApiClient.clearTokens();
@@ -403,12 +418,14 @@ class MemberAuthNotifier extends Notifier<MemberAuthState> {
     }
   }
 
-  Future<bool> cancelReservation(String reservationId) async {
+  Future<String?> cancelReservation(String reservationId) async {
     try {
       await _dio.delete('/auth/member/reservations/$reservationId');
-      return true;
+      return null;
+    } on DioException catch (e) {
+      return e.response?.data?['error'] as String? ?? '취소에 실패했습니다';
     } catch (_) {
-      return false;
+      return '취소에 실패했습니다';
     }
   }
 

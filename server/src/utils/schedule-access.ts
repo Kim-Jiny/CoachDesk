@@ -48,7 +48,10 @@ export async function findSchedulesCompat(options: ScheduleQueryOptions) {
       orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
     });
   } catch (err) {
-    if (!isMissingColumnError(err, 'Schedule.breakMinutes')) {
+    if (
+      !isMissingColumnError(err, 'Schedule.breakMinutes') &&
+      !isMissingColumnError(err, 'Schedule.isPublic')
+    ) {
       throw err;
     }
 
@@ -71,6 +74,7 @@ export async function findSchedulesCompat(options: ScheduleQueryOptions) {
         s."slotDuration",
         0 AS "breakMinutes",
         s."maxCapacity",
+        false AS "isPublic",
         s."isActive",
         s."createdAt",
         s."updatedAt",
@@ -92,6 +96,7 @@ export async function findSchedulesCompat(options: ScheduleQueryOptions) {
       slotDuration: row.slotDuration,
       breakMinutes: 0,
       maxCapacity: row.maxCapacity,
+      isPublic: row.isPublic,
       isActive: row.isActive,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
@@ -122,7 +127,10 @@ export async function findScheduleOverridesCompat(options: OverrideQueryOptions)
       orderBy: { date: 'asc' },
     });
   } catch (err) {
-    if (!isMissingColumnError(err, 'ScheduleOverride.breakMinutes')) {
+    if (
+      !isMissingColumnError(err, 'ScheduleOverride.breakMinutes') &&
+      !isMissingColumnError(err, 'ScheduleOverride.isPublic')
+    ) {
       throw err;
     }
 
@@ -146,6 +154,7 @@ export async function findScheduleOverridesCompat(options: OverrideQueryOptions)
         o."slotDuration",
         NULL::integer AS "breakMinutes",
         o."maxCapacity",
+        NULL::boolean AS "isPublic",
         o."createdAt",
         u."id" AS "coachUserId",
         u."name" AS "coachName"
@@ -166,6 +175,7 @@ export async function findScheduleOverridesCompat(options: OverrideQueryOptions)
       slotDuration: row.slotDuration,
       breakMinutes: null,
       maxCapacity: row.maxCapacity,
+      isPublic: row.isPublic,
       createdAt: row.createdAt,
       ...(includeCoach
           ? { coach: row.coachUserId ? { id: row.coachUserId, name: row.coachName } : null }

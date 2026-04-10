@@ -183,6 +183,33 @@ class _ReservationFormScreenState extends ConsumerState<ReservationFormScreen> {
     return null;
   }
 
+  bool _overlapsTimeRange(
+    String leftStart,
+    String leftEnd,
+    String rightStart,
+    String rightEnd,
+  ) {
+    return leftStart.compareTo(rightEnd) < 0 &&
+        rightStart.compareTo(leftEnd) < 0;
+  }
+
+  List<_AdminSlotOption> _findOverlappingOpenSlots() {
+    final effectiveCoachId = _coachId ?? ApiClient.getUserId();
+    if (effectiveCoachId == null) return const [];
+    final startTime = _formatTime(_startTime);
+    final endTime = _formatTime(_endTime);
+
+    return _availableSlots.where((slot) {
+      if (slot.coachId != effectiveCoachId) return false;
+      return _overlapsTimeRange(
+        startTime,
+        endTime,
+        slot.startTime,
+        slot.endTime,
+      );
+    }).toList();
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     final selectedMember =
@@ -195,6 +222,37 @@ class _ReservationFormScreenState extends ConsumerState<ReservationFormScreen> {
       return;
     }
 
+    final overlappingOpenSlots = _useManualTime
+        ? _findOverlappingOpenSlots()
+        : const <_AdminSlotOption>[];
+    var force = false;
+    if (overlappingOpenSlots.isNotEmpty) {
+      final overlapsSummary = overlappingOpenSlots
+          .map((slot) => '${slot.startTime}-${slot.endTime} ${slot.coachName}')
+          .join('\n');
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('이미 개설된 시간과 겹쳐요'),
+          content: Text(
+            '직접 입력한 시간이 아래 오픈 시간과 겹칩니다.\n\n$overlapsSummary\n\n그래도 예약을 추가하시겠어요?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('취소'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('그래도 추가'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+      force = true;
+    }
+
     final result = await ref
         .read(reservationProvider.notifier)
         .createReservation({
@@ -202,6 +260,8 @@ class _ReservationFormScreenState extends ConsumerState<ReservationFormScreen> {
           'date': DateFormat('yyyy-MM-dd').format(_selectedDate),
           'startTime': _formatTime(_startTime),
           'endTime': _formatTime(_endTime),
+          'manualTime': _useManualTime,
+          'force': force,
           if (_coachId != null && _coachId!.isNotEmpty) 'coachId': _coachId,
           if (_quickMemoController.text.isNotEmpty)
             'quickMemo': _quickMemoController.text,
@@ -209,7 +269,7 @@ class _ReservationFormScreenState extends ConsumerState<ReservationFormScreen> {
         });
 
     if (!mounted) return;
-    if (result) {
+    if (result.success) {
       final authBox = Hive.box(AppConstants.authBox);
       await authBox.put(
         AppConstants.reservationLastMemberIdKey,
@@ -227,7 +287,9 @@ class _ReservationFormScreenState extends ConsumerState<ReservationFormScreen> {
       context.pop();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('예약에 실패했습니다. 정원이 가득 찼을 수 있습니다.')),
+        SnackBar(
+          content: Text(result.error ?? '예약에 실패했습니다. 정원이 가득 찼을 수 있습니다.'),
+        ),
       );
     }
   }

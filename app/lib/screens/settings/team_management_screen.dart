@@ -185,6 +185,27 @@ class _TeamManagementScreenState extends ConsumerState<TeamManagementScreen> {
                             ),
                             const SizedBox(height: 12),
                           ],
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(
+                                Icons.schedule_outlined,
+                                size: 16,
+                                color: Colors.grey,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '예약 오픈: 수업 ${(_orgData!['reservationOpenDaysBefore'] as int? ?? 30)}일 ${(_orgData!['reservationOpenHoursBefore'] as int? ?? 0)}시간 전부터\n취소 가능: 수업 ${(_orgData!['reservationCancelDeadlineMinutes'] as int? ?? 120)}분 전까지',
+                                  style: TextStyle(
+                                    color: Colors.grey.shade700,
+                                    height: 1.45,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
                           if ((noticeText?.isNotEmpty ?? false) ||
                               (noticeImageUrl?.isNotEmpty ?? false)) ...[
                             Row(
@@ -349,6 +370,9 @@ class _OrgEditDialogState extends State<_OrgEditDialog> {
   late final TextEditingController _nameController;
   late final TextEditingController _descriptionController;
   late final TextEditingController _reservationNoticeTextController;
+  late final TextEditingController _reservationOpenDaysBeforeController;
+  late final TextEditingController _reservationOpenHoursBeforeController;
+  late final TextEditingController _reservationCancelDeadlineMinutesController;
   late String _bookingMode;
   late String _reservationPolicy;
   String? _existingReservationNoticeImageUrl;
@@ -371,6 +395,16 @@ class _OrgEditDialogState extends State<_OrgEditDialog> {
     _reservationNoticeTextController = TextEditingController(
       text: widget.orgData['reservationNoticeText'] as String? ?? '',
     );
+    _reservationOpenDaysBeforeController = TextEditingController(
+      text: '${widget.orgData['reservationOpenDaysBefore'] as int? ?? 30}',
+    );
+    _reservationOpenHoursBeforeController = TextEditingController(
+      text: '${widget.orgData['reservationOpenHoursBefore'] as int? ?? 0}',
+    );
+    _reservationCancelDeadlineMinutesController = TextEditingController(
+      text:
+          '${widget.orgData['reservationCancelDeadlineMinutes'] as int? ?? 120}',
+    );
     _bookingMode = widget.orgData['bookingMode'] as String? ?? 'PRIVATE';
     _reservationPolicy =
         widget.orgData['reservationPolicy'] as String? ?? 'AUTO_CONFIRM';
@@ -383,6 +417,9 @@ class _OrgEditDialogState extends State<_OrgEditDialog> {
     _nameController.dispose();
     _descriptionController.dispose();
     _reservationNoticeTextController.dispose();
+    _reservationOpenDaysBeforeController.dispose();
+    _reservationOpenHoursBeforeController.dispose();
+    _reservationCancelDeadlineMinutesController.dispose();
     super.dispose();
   }
 
@@ -583,6 +620,42 @@ class _OrgEditDialogState extends State<_OrgEditDialog> {
                 }
               },
             ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _reservationOpenDaysBeforeController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: '예약 오픈 일수',
+                      suffixText: '일',
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _reservationOpenHoursBeforeController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: '예약 오픈 시간',
+                      suffixText: '시간',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _reservationCancelDeadlineMinutesController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: '예약 취소 마감',
+                suffixText: '분 전',
+                hintText: '수업 시작 몇 분 전까지 취소 허용',
+              ),
+            ),
           ],
         ),
       ),
@@ -595,6 +668,27 @@ class _OrgEditDialogState extends State<_OrgEditDialog> {
           onPressed: () {
             final name = _nameController.text.trim();
             if (name.isEmpty) return;
+            final reservationOpenDaysBefore = int.tryParse(
+              _reservationOpenDaysBeforeController.text.trim(),
+            );
+            final reservationOpenHoursBefore = int.tryParse(
+              _reservationOpenHoursBeforeController.text.trim(),
+            );
+            final reservationCancelDeadlineMinutes = int.tryParse(
+              _reservationCancelDeadlineMinutesController.text.trim(),
+            );
+            if (reservationOpenDaysBefore == null ||
+                reservationOpenDaysBefore < 0 ||
+                reservationOpenHoursBefore == null ||
+                reservationOpenHoursBefore < 0 ||
+                reservationOpenHoursBefore > 23 ||
+                reservationCancelDeadlineMinutes == null ||
+                reservationCancelDeadlineMinutes < 0) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('예약 가능/취소 설정 값을 다시 확인해주세요')),
+              );
+              return;
+            }
             Navigator.pop(context, {
               'name': name,
               'description': _descriptionController.text.trim().isEmpty
@@ -618,6 +712,10 @@ class _OrgEditDialogState extends State<_OrgEditDialog> {
                     _newReservationNoticeImageContentType,
               'bookingMode': _bookingMode,
               'reservationPolicy': _reservationPolicy,
+              'reservationOpenDaysBefore': reservationOpenDaysBefore,
+              'reservationOpenHoursBefore': reservationOpenHoursBefore,
+              'reservationCancelDeadlineMinutes':
+                  reservationCancelDeadlineMinutes,
             });
           },
           child: const Text('저장'),

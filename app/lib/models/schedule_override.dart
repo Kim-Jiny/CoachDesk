@@ -3,12 +3,13 @@ class ScheduleOverride {
   final String organizationId;
   final String coachId;
   final DateTime date;
-  final String type; // OPEN | CLOSED
+  final String type; // OPEN | CLOSED | VISIBLE | HIDDEN
   final String? startTime;
   final String? endTime;
   final int? slotDuration;
   final int? breakMinutes;
   final int? maxCapacity;
+  final bool? isPublic;
   final String? coachName;
   final DateTime createdAt;
 
@@ -23,6 +24,7 @@ class ScheduleOverride {
     this.slotDuration,
     this.breakMinutes,
     this.maxCapacity,
+    this.isPublic,
     this.coachName,
     required this.createdAt,
   });
@@ -44,6 +46,7 @@ class ScheduleOverride {
       slotDuration: json['slotDuration'] as int?,
       breakMinutes: json['breakMinutes'] as int?,
       maxCapacity: json['maxCapacity'] as int?,
+      isPublic: json['isPublic'] as bool?,
       coachName: (json['coach'] as Map<String, dynamic>?)?['name'] as String?,
       createdAt: DateTime.parse(json['createdAt'] as String),
     );

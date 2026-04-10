@@ -84,6 +84,13 @@ class _MemberListScreenState extends ConsumerState<MemberListScreen> {
   }
 
   Future<void> _moveMember(Member member, String? groupId) async {
+    if (member.memberGroupId == groupId) {
+      if (mounted) {
+        setState(() => _dragTargetGroupId = null);
+      }
+      return;
+    }
+
     final success = await ref
         .read(memberProvider.notifier)
         .moveMemberToGroup(member.id, groupId);
@@ -230,9 +237,8 @@ class _MemberListScreenState extends ConsumerState<MemberListScreen> {
                           label: group.name,
                           count: (groupedMembers[group.id] ?? const []).length,
                           selected: _selectedGroupFilter == group.id,
-                          onTap: () => setState(
-                            () => _selectedGroupFilter = group.id,
-                          ),
+                          onTap: () =>
+                              setState(() => _selectedGroupFilter = group.id),
                         ),
                       ],
                     ],
@@ -296,6 +302,13 @@ class _MemberListScreenState extends ConsumerState<MemberListScreen> {
                           isActiveDragTarget:
                               _dragTargetGroupId == section.groupId,
                           onWillAccept: (member) {
+                            if (member == null) return false;
+                            if (member.memberGroupId == section.groupId) {
+                              if (_dragTargetGroupId == section.groupId) {
+                                setState(() => _dragTargetGroupId = null);
+                              }
+                              return false;
+                            }
                             setState(
                               () => _dragTargetGroupId = section.groupId,
                             );
@@ -559,35 +572,22 @@ class _MemberCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final contact = member.phone ?? member.email ?? '';
+
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.grey.shade100),
       ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              CircleAvatar(
-                radius: 22,
-                backgroundColor: isPackageActive
-                    ? AppTheme.primaryColor.withValues(alpha: 0.1)
-                    : Colors.grey.shade100,
-                child: Text(
-                  member.name[0],
-                  style: TextStyle(
-                    color: isPackageActive
-                        ? AppTheme.primaryColor
-                        : Colors.grey,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -599,7 +599,10 @@ class _MemberCard extends StatelessWidget {
                             member.name,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontWeight: FontWeight.w600),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -611,20 +614,22 @@ class _MemberCard extends StatelessWidget {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      member.phone ?? member.email ?? '',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.grey.shade500,
-                        fontSize: 13,
+                    if (contact.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        contact,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.grey.shade500,
+                          fontSize: 12,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 6),
+                    ],
+                    const SizedBox(height: 5),
                     Wrap(
                       spacing: 6,
-                      runSpacing: 6,
+                      runSpacing: 4,
                       children: [
                         StatusBadge(
                           label: member.memberSourceLabel,
@@ -642,7 +647,7 @@ class _MemberCard extends StatelessWidget {
                     ),
                     if (member.quickMemo != null &&
                         member.quickMemo!.isNotEmpty) ...[
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 3),
                       Text(
                         member.quickMemo!,
                         maxLines: 1,
@@ -657,7 +662,7 @@ class _MemberCard extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Icon(Icons.drag_indicator_rounded, color: Colors.grey.shade400),
             ],
           ),

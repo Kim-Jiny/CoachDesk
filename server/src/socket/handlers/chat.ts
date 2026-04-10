@@ -47,13 +47,17 @@ export function registerChatHandlers(socket: Socket) {
       const senderType = mode === 'member' ? 'MEMBER' : 'USER';
 
       // Verify room access + get room info in a single query
-      const chatRoom = await prisma.chatRoom.findUnique({
+        const chatRoom = await prisma.chatRoom.findUnique({
         where: { id: data.chatRoomId },
         select: {
           userId: true,
           memberAccountId: true,
-          user: { select: { fcmToken: true, name: true } },
-          memberAccount: { select: { fcmToken: true, name: true } },
+          user: {
+            select: { fcmToken: true, name: true, notificationPreferences: true },
+          },
+          memberAccount: {
+            select: { fcmToken: true, name: true, notificationPreferences: true },
+          },
         },
       });
 
@@ -111,6 +115,7 @@ export function registerChatHandlers(socket: Socket) {
         sendPushIfOffline(
           `member:${chatRoom.memberAccountId}`,
           chatRoom.memberAccount?.fcmToken,
+          chatRoom.memberAccount?.notificationPreferences,
           chatRoom.user?.name ?? '코치',
           data.content,
           { type: 'CHAT_MESSAGE', chatRoomId: data.chatRoomId },
@@ -121,13 +126,21 @@ export function registerChatHandlers(socket: Socket) {
         sendPushIfOffline(
           `user:${chatRoom.userId}`,
           chatRoom.user?.fcmToken,
+          chatRoom.user?.notificationPreferences,
           chatRoom.memberAccount?.name ?? '회원',
           data.content,
           { type: 'CHAT_MESSAGE', chatRoomId: data.chatRoomId },
         );
       }
 
-      emitNewMessage(data.chatRoomId, serializedMessage, targetRoomIds);
+      emitNewMessage(
+        data.chatRoomId,
+        serializedMessage,
+        targetRoomIds,
+        senderType === 'USER'
+            ? chatRoom.user?.name ?? '코치'
+            : chatRoom.memberAccount?.name ?? '회원',
+      );
     } catch (err) {
       console.error('chat:send error:', err);
       socket.emit('chat:error', { error: 'Failed to send message' });

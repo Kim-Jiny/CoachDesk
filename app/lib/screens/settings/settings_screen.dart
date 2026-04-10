@@ -43,7 +43,11 @@ class SettingsScreen extends ConsumerWidget {
                     backgroundColor: Colors.white.withValues(alpha: 0.25),
                     child: Text(
                       (authState.user?.name ?? '?')[0],
-                      style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -62,7 +66,10 @@ class SettingsScreen extends ConsumerWidget {
                         const SizedBox(height: 2),
                         Text(
                           authState.user?.email ?? '',
-                          style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 13),
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.8),
+                            fontSize: 13,
+                          ),
                         ),
                       ],
                     ),
@@ -88,14 +95,24 @@ class SettingsScreen extends ConsumerWidget {
                     title: '초대 코드',
                     subtitle: authState.organization!.inviteCode,
                     trailing: IconButton(
-                      icon: Icon(Icons.copy_rounded, size: 20, color: Colors.grey.shade500),
+                      icon: Icon(
+                        Icons.copy_rounded,
+                        size: 20,
+                        color: Colors.grey.shade500,
+                      ),
                       onPressed: () {
-                        Clipboard.setData(ClipboardData(text: authState.organization!.inviteCode));
+                        Clipboard.setData(
+                          ClipboardData(
+                            text: authState.organization!.inviteCode,
+                          ),
+                        );
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: const Text('초대 코드가 복사되었습니다'),
                             behavior: SnackBarBehavior.floating,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
                           ),
                         );
                       },
@@ -136,7 +153,7 @@ class SettingsScreen extends ConsumerWidget {
                 _SettingsItem(
                   icon: Icons.schedule_rounded,
                   iconColor: Colors.orange,
-                  title: '가용시간 설정',
+                  title: '수업시간 설정',
                   onTap: () => context.push('/settings/schedules'),
                 ),
                 _SettingsItem(
@@ -144,6 +161,12 @@ class SettingsScreen extends ConsumerWidget {
                   iconColor: AppTheme.successColor,
                   title: '팀 관리',
                   onTap: () => context.push('/settings/team'),
+                ),
+                _SettingsItem(
+                  icon: Icons.notifications_active_rounded,
+                  iconColor: Colors.redAccent,
+                  title: '알림 설정',
+                  onTap: () => context.push('/settings/notifications'),
                 ),
               ],
             ),
@@ -155,7 +178,8 @@ class SettingsScreen extends ConsumerWidget {
               child: OutlinedButton.icon(
                 onPressed: () async {
                   final memberNotifier = ref.read(memberAuthProvider.notifier);
-                  final hasMemberToken = ApiClient.getMemberAccessToken() != null;
+                  final hasMemberToken =
+                      ApiClient.getMemberAccessToken() != null;
                   if (hasMemberToken) {
                     final switched = await memberNotifier.switchFromAdmin();
                     if (switched && context.mounted) {
@@ -169,9 +193,13 @@ class SettingsScreen extends ConsumerWidget {
                 label: const Text('회원 모드로 전환'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppTheme.primaryColor,
-                  side: BorderSide(color: AppTheme.primaryColor.withValues(alpha: 0.3)),
+                  side: BorderSide(
+                    color: AppTheme.primaryColor.withValues(alpha: 0.3),
+                  ),
                   padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                 ),
               ),
             ),
@@ -185,14 +213,22 @@ class SettingsScreen extends ConsumerWidget {
                   final confirmed = await showDialog<bool>(
                     context: context,
                     builder: (context) => AlertDialog(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
                       title: const Text('로그아웃'),
                       content: const Text('로그아웃 하시겠습니까?'),
                       actions: [
-                        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('취소')),
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: const Text('취소'),
+                        ),
                         TextButton(
                           onPressed: () => Navigator.pop(context, true),
-                          child: const Text('확인', style: TextStyle(color: AppTheme.errorColor)),
+                          child: const Text(
+                            '확인',
+                            style: TextStyle(color: AppTheme.errorColor),
+                          ),
                         ),
                       ],
                     ),
@@ -206,9 +242,13 @@ class SettingsScreen extends ConsumerWidget {
                 label: const Text('로그아웃'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppTheme.errorColor,
-                  side: BorderSide(color: AppTheme.errorColor.withValues(alpha: 0.3)),
+                  side: BorderSide(
+                    color: AppTheme.errorColor.withValues(alpha: 0.3),
+                  ),
                   padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                 ),
               ),
             ),
@@ -275,9 +315,21 @@ class _SettingsItem extends StatelessWidget {
         ),
         child: Icon(icon, color: iconColor, size: 20),
       ),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 15)),
-      subtitle: subtitle != null ? Text(subtitle!, style: TextStyle(fontSize: 13, color: Colors.grey.shade500)) : null,
-      trailing: trailing ?? (onTap != null ? Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400) : null),
+      title: Text(
+        title,
+        style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 15),
+      ),
+      subtitle: subtitle != null
+          ? Text(
+              subtitle!,
+              style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+            )
+          : null,
+      trailing:
+          trailing ??
+          (onTap != null
+              ? Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400)
+              : null),
       onTap: onTap,
     );
   }
