@@ -6,6 +6,8 @@ class Organization {
   final String? role;
   final String bookingMode;
   final String reservationPolicy;
+  final String? reservationNoticeText;
+  final String? reservationNoticeImageUrl;
 
   const Organization({
     required this.id,
@@ -15,6 +17,8 @@ class Organization {
     this.role,
     this.bookingMode = 'PRIVATE',
     this.reservationPolicy = 'AUTO_CONFIRM',
+    this.reservationNoticeText,
+    this.reservationNoticeImageUrl,
   });
 
   factory Organization.fromJson(Map<String, dynamic> json) {
@@ -26,6 +30,8 @@ class Organization {
       role: json['role'] as String?,
       bookingMode: json['bookingMode'] as String? ?? 'PRIVATE',
       reservationPolicy: json['reservationPolicy'] as String? ?? 'AUTO_CONFIRM',
+      reservationNoticeText: json['reservationNoticeText'] as String?,
+      reservationNoticeImageUrl: json['reservationNoticeImageUrl'] as String?,
     );
   }
 
@@ -37,5 +43,7 @@ class Organization {
     'role': role,
     'bookingMode': bookingMode,
     'reservationPolicy': reservationPolicy,
+    'reservationNoticeText': reservationNoticeText,
+    'reservationNoticeImageUrl': reservationNoticeImageUrl,
   };
 }

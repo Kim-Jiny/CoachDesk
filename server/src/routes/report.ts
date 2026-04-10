@@ -3,6 +3,8 @@ import { prisma } from '../utils/prisma';
 import { authMiddleware } from '../middleware/auth';
 import { getCurrentOrgId } from '../utils/org-access';
 import { addDays, getKstMonthStart, getKstToday, parseDateOnly } from '../utils/kst-date';
+import { deriveMemberPackageStatus } from '../utils/member-package-status';
+import { listMemberPackagesCompat } from '../utils/member-package-access';
 
 const router = Router();
 router.use(authMiddleware);
@@ -24,10 +26,14 @@ router.get('/revenue', async (req: Request, res: Response) => {
         member: { organizationId: orgId },
         purchaseDate: {
           gte: parseDateOnly(startDate as string),
-          lte: parseDateOnly(endDate as string),
+          lt: parseDateOnly(addDays(endDate as string, 1)),
         },
       },
       include: { package: true, member: { select: { name: true } } },
+      orderBy: [
+        { purchaseDate: 'desc' },
+        { createdAt: 'desc' },
+      ],
     });
 
     const totalRevenue = memberPackages.reduce((sum, mp) => sum + mp.paidAmount, 0);
@@ -68,7 +74,7 @@ router.get('/attendance', async (req: Request, res: Response) => {
         organizationId: orgId,
         date: {
           gte: parseDateOnly(startDate as string),
-          lte: parseDateOnly(endDate as string),
+          lt: parseDateOnly(addDays(endDate as string, 1)),
         },
       },
     });
@@ -102,14 +108,15 @@ router.get('/dashboard', async (req: Request, res: Response) => {
     const tomorrow = parseDateOnly(addDays(todayDate, 1));
 
     const [
-      totalMembers,
-      activeMembers,
+      members,
       todayReservations,
       pendingReservations,
       todaySessions,
     ] = await Promise.all([
-      prisma.member.count({ where: { organizationId: orgId } }),
-      prisma.member.count({ where: { organizationId: orgId, status: 'ACTIVE' } }),
+      prisma.member.findMany({
+        where: { organizationId: orgId },
+        select: { id: true },
+      }),
       prisma.reservation.findMany({
         where: { organizationId: orgId, date: { gte: today, lt: tomorrow }, status: { in: ['CONFIRMED', 'PENDING'] } },
         include: { member: { select: { name: true } }, coach: { select: { name: true } } },
@@ -118,6 +125,21 @@ router.get('/dashboard', async (req: Request, res: Response) => {
       prisma.reservation.count({ where: { organizationId: orgId, status: 'PENDING' } }),
       prisma.session.count({ where: { organizationId: orgId, date: { gte: today, lt: tomorrow } } }),
     ]);
+
+    const totalMembers = members.length;
+    const memberPackages = await listMemberPackagesCompat({
+      memberIds: members.map((member) => member.id),
+      organizationId: orgId,
+    });
+    const packagesByMemberId = new Map<string, any[]>();
+    for (const memberPackage of memberPackages) {
+      const current = packagesByMemberId.get(memberPackage.memberId) ?? [];
+      current.push(memberPackage);
+      packagesByMemberId.set(memberPackage.memberId, current);
+    }
+    const activeMembers = members.filter((member) => (
+      deriveMemberPackageStatus(packagesByMemberId.get(member.id) ?? []).packageStatus === 'PACKAGE_ACTIVE'
+    )).length;
 
     const monthRevenue = await prisma.memberPackage.aggregate({
       where: {

@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/socket_service.dart';
@@ -19,7 +20,20 @@ final socketConnectionProvider = Provider<void>((ref) {
     SocketService.instance.disconnect();
   }
 
+  final lifecycleListener = AppLifecycleListener(
+    onResume: () {
+      final admin = ref.read(authProvider).status;
+      final member = ref.read(memberAuthProvider).status;
+      final stillAuthenticated = admin == AuthStatus.authenticated ||
+          member == MemberAuthStatus.authenticated;
+      if (stillAuthenticated) {
+        SocketService.instance.connect();
+      }
+    },
+  );
+
   ref.onDispose(() {
+    lifecycleListener.dispose();
     SocketService.instance.disconnect();
   });
 });

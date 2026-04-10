@@ -97,13 +97,19 @@ class ReservationNotifier extends Notifier<ReservationState> {
     } catch (_) {}
   }
 
-  Future<void> fetchReservations({String? date, String? startDate, String? endDate}) async {
+  Future<void> fetchReservations({
+    String? date,
+    String? startDate,
+    String? endDate,
+    String? status,
+  }) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
       final params = <String, dynamic>{};
       if (date != null) params['date'] = date;
       if (startDate != null) params['startDate'] = startDate;
       if (endDate != null) params['endDate'] = endDate;
+      if (status != null && status.isNotEmpty) params['status'] = status;
       final response = await _dio.get('/reservations', queryParameters: params);
       final reservations = (response.data as List)
           .map((json) => Reservation.fromJson(json as Map<String, dynamic>))
@@ -112,7 +118,9 @@ class ReservationNotifier extends Notifier<ReservationState> {
     } on DioException catch (e) {
       state = state.copyWith(
         isLoading: false,
-        error: e.response?.data?['error'] as String? ?? 'Failed to load reservations',
+        error:
+            e.response?.data?['error'] as String? ??
+            'Failed to load reservations',
       );
     }
   }
@@ -146,4 +154,6 @@ class ReservationNotifier extends Notifier<ReservationState> {
 }
 
 final reservationProvider =
-    NotifierProvider<ReservationNotifier, ReservationState>(ReservationNotifier.new);
+    NotifierProvider<ReservationNotifier, ReservationState>(
+      ReservationNotifier.new,
+    );

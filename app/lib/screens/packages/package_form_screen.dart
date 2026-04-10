@@ -19,6 +19,8 @@ class _PackageFormScreenState extends ConsumerState<PackageFormScreen> {
   late final TextEditingController _sessionsController;
   late final TextEditingController _priceController;
   late final TextEditingController _validDaysController;
+  late bool _isActive;
+  late bool _isPublic;
 
   bool get isEditing => widget.package != null;
 
@@ -35,6 +37,8 @@ class _PackageFormScreenState extends ConsumerState<PackageFormScreen> {
     _validDaysController = TextEditingController(
       text: widget.package?.validDays?.toString() ?? '',
     );
+    _isActive = widget.package?.isActive ?? true;
+    _isPublic = widget.package?.isPublic ?? false;
   }
 
   @override
@@ -53,6 +57,8 @@ class _PackageFormScreenState extends ConsumerState<PackageFormScreen> {
       'name': _nameController.text.trim(),
       'totalSessions': int.parse(_sessionsController.text.trim()),
       'price': int.parse(_priceController.text.trim()),
+      'isActive': _isActive,
+      'isPublic': _isPublic,
       if (_validDaysController.text.trim().isNotEmpty)
         'validDays': int.parse(_validDaysController.text.trim()),
     };
@@ -96,7 +102,9 @@ class _PackageFormScreenState extends ConsumerState<PackageFormScreen> {
                 keyboardType: TextInputType.number,
                 validator: (v) {
                   if (v == null || v.isEmpty) return '세션 수를 입력하세요';
-                  if (int.tryParse(v) == null || int.parse(v) < 1) return '1 이상 입력하세요';
+                  if (int.tryParse(v) == null || int.parse(v) < 1) {
+                    return '1 이상 입력하세요';
+                  }
                   return null;
                 },
               ),
@@ -125,6 +133,38 @@ class _PackageFormScreenState extends ConsumerState<PackageFormScreen> {
                   hintText: '미입력 시 무제한',
                 ),
                 keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: Column(
+                  children: [
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('활성 상태'),
+                      subtitle: Text(
+                        _isActive ? '현재 사용 가능한 패키지로 노출됩니다' : '비활성 상태로 보관됩니다',
+                      ),
+                      value: _isActive,
+                      onChanged: (value) => setState(() => _isActive = value),
+                    ),
+                    const Divider(),
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('공개 여부'),
+                      subtitle: Text(
+                        _isPublic ? '공개 패키지로 운영합니다' : '비공개 패키지로 내부 관리용입니다',
+                      ),
+                      value: _isPublic,
+                      onChanged: (value) => setState(() => _isPublic = value),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 32),
               ElevatedButton(

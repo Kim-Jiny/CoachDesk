@@ -6,22 +6,26 @@ import '../models/member.dart';
 
 class MemberListState {
   final List<Member> members;
+  final List<MemberGroup> groups;
   final bool isLoading;
   final String? error;
 
   const MemberListState({
     this.members = const [],
+    this.groups = const [],
     this.isLoading = false,
     this.error,
   });
 
   MemberListState copyWith({
     List<Member>? members,
+    List<MemberGroup>? groups,
     bool? isLoading,
     String? error,
   }) {
     return MemberListState(
       members: members ?? this.members,
+      groups: groups ?? this.groups,
       isLoading: isLoading ?? this.isLoading,
       error: error,
     );
@@ -37,18 +41,55 @@ class MemberNotifier extends Notifier<MemberListState> {
   Future<void> fetchMembers({String? search}) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      final response = await _dio.get('/members', queryParameters: {
-        if (search != null && search.isNotEmpty) 'search': search,
-      });
-      final members = (response.data as List)
+      final responses = await Future.wait([
+        _dio.get(
+          '/members',
+          queryParameters: {
+            if (search != null && search.isNotEmpty) 'search': search,
+          },
+        ),
+        _dio.get('/members/groups'),
+      ]);
+      final members = (responses[0].data as List)
           .map((json) => Member.fromJson(json as Map<String, dynamic>))
           .toList();
-      state = state.copyWith(members: members, isLoading: false);
+      final groups = (responses[1].data as List)
+          .map((json) => MemberGroup.fromJson(json as Map<String, dynamic>))
+          .toList();
+      state = state.copyWith(
+        members: members,
+        groups: groups,
+        isLoading: false,
+      );
     } on DioException catch (e) {
       state = state.copyWith(
         isLoading: false,
-        error: e.response?.data?['error'] as String? ?? 'Failed to load members',
+        error:
+            e.response?.data?['error'] as String? ?? 'Failed to load members',
       );
+    }
+  }
+
+  Future<bool> createGroup(String name) async {
+    try {
+      await _dio.post('/members/groups', data: {'name': name});
+      await fetchMembers();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> moveMemberToGroup(String memberId, String? memberGroupId) async {
+    try {
+      await _dio.patch(
+        '/members/$memberId/group',
+        data: {'memberGroupId': memberGroupId},
+      );
+      await fetchMembers();
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -83,4 +124,6 @@ class MemberNotifier extends Notifier<MemberListState> {
   }
 }
 
-final memberProvider = NotifierProvider<MemberNotifier, MemberListState>(MemberNotifier.new);
+final memberProvider = NotifierProvider<MemberNotifier, MemberListState>(
+  MemberNotifier.new,
+);

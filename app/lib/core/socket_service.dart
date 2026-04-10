@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
@@ -10,6 +12,10 @@ class SocketService {
 
   io.Socket? _socket;
   bool _isConnected = false;
+  String? _connectedToken;
+  String? _connectedMode;
+  Timer? _reconnectTimer;
+  bool _manualDisconnect = false;
 
   bool get isConnected => _isConnected;
   io.Socket? get socket => _socket;
@@ -27,23 +33,36 @@ class SocketService {
   }
 
   void connect() {
-    if (_isConnected && _socket != null) return;
-
     final token = ApiClient.getAccessToken();
     if (token == null) return;
 
     final mode = ApiClient.isMemberMode ? 'member' : 'admin';
+    _manualDisconnect = false;
+    _clearReconnectTimer();
+    final canReuseConnection =
+        _isConnected &&
+        _socket != null &&
+        _connectedToken == token &&
+        _connectedMode == mode;
+    if (canReuseConnection) return;
 
     // Dispose old socket to prevent leaks
     _socket?.dispose();
     _socket = null;
     _isConnected = false;
+    _connectedToken = token;
+    _connectedMode = mode;
 
     _socket = io.io(
       _socketUrl,
       io.OptionBuilder()
           .setTransports(['websocket'])
           .disableAutoConnect()
+          .enableReconnection()
+          .setReconnectionAttempts(999999)
+          .setReconnectionDelay(1000)
+          .setReconnectionDelayMax(5000)
+          .setTimeout(10000)
           .setAuth({'token': token, 'mode': mode})
           .build(),
     );
@@ -60,11 +79,13 @@ class SocketService {
     _socket!.onDisconnect((_) {
       _isConnected = false;
       debugPrint('[Socket] Disconnected');
+      _scheduleReconnect();
     });
 
     _socket!.onConnectError((error) {
       _isConnected = false;
       debugPrint('[Socket] Connection error: $error');
+      _scheduleReconnect();
     });
 
     _socket!.onError((error) {
@@ -75,9 +96,13 @@ class SocketService {
   }
 
   void disconnect() {
+    _manualDisconnect = true;
+    _clearReconnectTimer();
     _socket?.dispose();
     _socket = null;
     _isConnected = false;
+    _connectedToken = null;
+    _connectedMode = null;
     debugPrint('[Socket] Disposed');
   }
 
@@ -108,5 +133,22 @@ class SocketService {
 
   void removeConnectCallback(VoidCallback cb) {
     _onConnectCallbacks.remove(cb);
+  }
+
+  void _scheduleReconnect() {
+    if (_manualDisconnect || _isConnected) return;
+    if (_reconnectTimer?.isActive == true) return;
+    if (ApiClient.getAccessToken() == null) return;
+
+    _reconnectTimer = Timer(const Duration(seconds: 3), () {
+      _reconnectTimer = null;
+      if (_manualDisconnect || _isConnected) return;
+      connect();
+    });
+  }
+
+  void _clearReconnectTimer() {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
   }
 }

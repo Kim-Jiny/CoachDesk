@@ -8,6 +8,8 @@ type SlotResult = {
   startTime: string;
   endTime: string;
   available: boolean;
+  blocked?: boolean;
+  blockedOverrideId?: string;
   coachName?: string;
 };
 
@@ -27,7 +29,7 @@ export async function getAvailableSlots(params: {
   coachId?: string;
   includePast?: boolean;
   includeCoachNames?: boolean;
-  }) {
+}) {
   const {
     organizationId,
     date,
@@ -106,15 +108,24 @@ export async function getAvailableSlots(params: {
     slotMap.set(getSlotKey(finalSlot), finalSlot);
   }
 
-  const slots = [...slotMap.values()];
-
-  return slots.filter((slot) => {
-    return !closedOverrides.some(
+  const slots = [...slotMap.values()].map((slot) => {
+    const blockingOverride = closedOverrides.find(
       (override) =>
         override.coachId === slot.coachId &&
         isTimeRangeClosed(override, slot.startTime, slot.endTime),
     );
+
+    if (!blockingOverride) return slot;
+
+    return {
+      ...slot,
+      available: false,
+      blocked: true,
+      blockedOverrideId: blockingOverride.id,
+    };
   });
+
+  return slots;
 }
 
 export async function findGeneratedSlot(params: {

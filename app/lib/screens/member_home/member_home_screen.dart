@@ -6,7 +6,9 @@ import 'package:intl/intl.dart';
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../models/member_booking.dart';
+import '../../models/package.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/chat_provider.dart';
 import '../../providers/member_auth_provider.dart';
 import '../../widgets/admin_register_dialog.dart';
 
@@ -19,21 +21,235 @@ class MemberHomeScreen extends ConsumerStatefulWidget {
 
 class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
   List<MemberReservationSummary> _reservations = [];
+  List<MemberPackage> _packages = [];
   bool _isLoadingReservations = false;
+  bool _isLoadingPackages = false;
 
   @override
   void initState() {
     super.initState();
     Future.microtask(() {
       ref.read(memberAuthProvider.notifier).fetchMyClasses();
+      ref.read(chatRoomListProvider.notifier).fetchRooms();
       _loadReservations();
+      _loadPackages();
     });
+  }
+
+  Future<void> _openChatWithCoach(
+    MemberClass memberClass,
+    MemberCoach coach,
+  ) async {
+    final accountId = ref.read(memberAuthProvider).accountId;
+    if (accountId == null) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    final router = GoRouter.of(context);
+
+    final room = await ref
+        .read(chatRoomListProvider.notifier)
+        .getOrCreateRoom(
+          organizationId: memberClass.organizationId,
+          userId: coach.id,
+          memberAccountId: accountId,
+        );
+
+    if (!mounted) return;
+    if (room == null) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('채팅방을 열 수 없습니다')),
+      );
+      return;
+    }
+
+    // Refresh list so the new room shows up with up-to-date metadata
+    await ref.read(chatRoomListProvider.notifier).fetchRooms();
+    if (!mounted) return;
+    router.push('/member/chat/${room.id}');
   }
 
   Future<void> _loadReservations() async {
     setState(() => _isLoadingReservations = true);
-    final result = await ref.read(memberAuthProvider.notifier).fetchMyReservations();
-    if (mounted) setState(() { _reservations = result; _isLoadingReservations = false; });
+    final result = await ref
+        .read(memberAuthProvider.notifier)
+        .fetchMyReservations();
+    if (mounted) {
+      setState(() {
+        _reservations = result;
+        _isLoadingReservations = false;
+      });
+    }
+  }
+
+  Future<void> _loadPackages() async {
+    setState(() => _isLoadingPackages = true);
+    final result = await ref
+        .read(memberAuthProvider.notifier)
+        .fetchMyPackages();
+    if (mounted) {
+      setState(() {
+        _packages = result;
+        _isLoadingPackages = false;
+      });
+    }
+  }
+
+  Future<void> _openPauseRequestSheet(MemberPackage memberPackage) async {
+    DateTime? startDate;
+    DateTime? endDate;
+    final reasonController = TextEditingController();
+
+    final submitted = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) {
+          Future<void> pickStartDate() async {
+            final picked = await showDatePicker(
+              context: context,
+              initialDate: DateTime.now(),
+              firstDate: DateTime.now(),
+              lastDate:
+                  memberPackage.expiryDate ??
+                  DateTime.now().add(const Duration(days: 365)),
+            );
+            if (picked == null) return;
+            setModalState(() {
+              startDate = picked;
+              if (endDate != null && endDate!.isBefore(picked)) {
+                endDate = picked;
+              }
+            });
+          }
+
+          Future<void> pickEndDate() async {
+            final picked = await showDatePicker(
+              context: context,
+              initialDate: endDate ?? startDate ?? DateTime.now(),
+              firstDate: startDate ?? DateTime.now(),
+              lastDate:
+                  memberPackage.expiryDate ??
+                  DateTime.now().add(const Duration(days: 365)),
+            );
+            if (picked == null) return;
+            setModalState(() => endDate = picked);
+          }
+
+          final canSubmit = startDate != null && endDate != null;
+          final extensionDays = canSubmit
+              ? endDate!.difference(startDate!).inDays + 1
+              : null;
+
+          return Padding(
+            padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: 8,
+              bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${memberPackage.package?.name ?? '패키지'} 정지 신청',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '관리자 승인 후 선택한 기간만큼 만료일이 연장됩니다.',
+                  style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.play_arrow_rounded),
+                  title: const Text('정지 시작일'),
+                  subtitle: Text(
+                    startDate == null
+                        ? '날짜 선택'
+                        : DateFormat('yyyy.MM.dd').format(startDate!),
+                  ),
+                  onTap: pickStartDate,
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.stop_rounded),
+                  title: const Text('정지 종료일'),
+                  subtitle: Text(
+                    endDate == null
+                        ? '날짜 선택'
+                        : DateFormat('yyyy.MM.dd').format(endDate!),
+                  ),
+                  onTap: pickEndDate,
+                ),
+                TextField(
+                  controller: reasonController,
+                  maxLines: 2,
+                  decoration: const InputDecoration(
+                    labelText: '정지 사유',
+                    hintText: '필요시 간단히 적어주세요',
+                  ),
+                ),
+                if (extensionDays != null) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryColor.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '승인되면 만료일이 $extensionDays일 연장됩니다.',
+                      style: const TextStyle(
+                        color: AppTheme.primaryColor,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: canSubmit
+                        ? () => Navigator.pop(context, true)
+                        : null,
+                    child: const Text('정지 신청하기'),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+
+    if (submitted != true || startDate == null || endDate == null || !mounted) {
+      reasonController.dispose();
+      return;
+    }
+
+    final message = await ref
+        .read(memberAuthProvider.notifier)
+        .requestPackagePause(
+          memberPackageId: memberPackage.id,
+          startDate: DateFormat('yyyy-MM-dd').format(startDate!),
+          endDate: DateFormat('yyyy-MM-dd').format(endDate!),
+          reason: reasonController.text,
+        );
+    reasonController.dispose();
+
+    if (!mounted || message == null) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+    await _loadPackages();
   }
 
   void _showJoinDialog() {
@@ -61,8 +277,9 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
               final code = controller.text.trim();
               if (code.isEmpty) return;
               Navigator.pop(ctx);
-              final success =
-                  await ref.read(memberAuthProvider.notifier).joinClass(code);
+              final success = await ref
+                  .read(memberAuthProvider.notifier)
+                  .joinClass(code);
               if (mounted) {
                 final message = success
                     ? '수업에 참여했습니다!'
@@ -87,6 +304,7 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
     final authState = ref.watch(memberAuthProvider);
     final name = authState.name ?? '회원';
     final classes = authState.classes;
+    final unreadCount = ref.watch(chatUnreadCountProvider);
 
     return Scaffold(
       body: CustomScrollView(
@@ -137,6 +355,20 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
                           ],
                         ),
                       ),
+                      IconButton(
+                        onPressed: () => context.push('/member/chat'),
+                        icon: Badge(
+                          isLabelVisible: unreadCount > 0,
+                          label: Text(
+                            unreadCount > 99 ? '99+' : '$unreadCount',
+                          ),
+                          child: Icon(
+                            Icons.chat_bubble_outline,
+                            color: Colors.white.withValues(alpha: 0.9),
+                          ),
+                        ),
+                        tooltip: '채팅',
+                      ),
                       PopupMenuButton<String>(
                         icon: Icon(
                           Icons.more_vert,
@@ -144,9 +376,12 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
                         ),
                         onSelected: (value) async {
                           if (value == 'switch_admin') {
-                            final hasAdminToken = ApiClient.getAdminAccessToken() != null;
+                            final hasAdminToken =
+                                ApiClient.getAdminAccessToken() != null;
                             if (hasAdminToken) {
-                              final switched = await ref.read(authProvider.notifier).switchFromMember();
+                              final switched = await ref
+                                  .read(authProvider.notifier)
+                                  .switchFromMember();
                               if (!context.mounted) return;
                               if (switched) context.go('/home');
                             } else {
@@ -158,7 +393,9 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
                               if (result == true) context.go('/home');
                             }
                           } else if (value == 'logout') {
-                            await ref.read(memberAuthProvider.notifier).logout();
+                            await ref
+                                .read(memberAuthProvider.notifier)
+                                .logout();
                             if (!context.mounted) return;
                             context.go('/auth-select');
                           }
@@ -202,11 +439,17 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
                   children: [
                     const Text(
                       '다가오는 예약',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     const SizedBox(width: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: AppTheme.primaryColor.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(10),
@@ -230,7 +473,9 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 20),
-                  itemCount: _reservations.length > 5 ? 5 : _reservations.length,
+                  itemCount: _reservations.length > 5
+                      ? 5
+                      : _reservations.length,
                   itemBuilder: (context, index) {
                     final r = _reservations[index];
                     return Container(
@@ -257,14 +502,20 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
                           const SizedBox(height: 4),
                           Text(
                             '${r.startTime} - ${r.endTime}  ${r.coachName} 코치',
-                            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 2),
                           Text(
                             r.organizationName,
-                            style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey.shade400,
+                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -277,6 +528,207 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
             ),
           ] else if (!_isLoadingReservations && classes.isNotEmpty)
             const SliverToBoxAdapter(child: SizedBox.shrink()),
+
+          if (_packages.isNotEmpty || _isLoadingPackages)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '내 패키지',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    if (_isLoadingPackages)
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(vertical: 16),
+                          child: CircularProgressIndicator(),
+                        ),
+                      )
+                    else
+                      ..._packages.map((memberPackage) {
+                        final expiryLabel = memberPackage.expiryDate == null
+                            ? '무제한'
+                            : DateFormat(
+                                'yyyy.MM.dd',
+                              ).format(memberPackage.expiryDate!);
+                        final pendingRange =
+                            memberPackage.pauseRequestedStartDate != null &&
+                                memberPackage.pauseRequestedEndDate != null
+                            ? '${DateFormat('M/d').format(memberPackage.pauseRequestedStartDate!)} - ${DateFormat('M/d').format(memberPackage.pauseRequestedEndDate!)}'
+                            : null;
+                        final activeRange =
+                            memberPackage.pauseStartDate != null &&
+                                memberPackage.pauseEndDate != null
+                            ? '${DateFormat('M/d').format(memberPackage.pauseStartDate!)} - ${DateFormat('M/d').format(memberPackage.pauseEndDate!)}'
+                            : null;
+
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: AppTheme.softShadow,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      memberPackage.package?.name ?? '패키지',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: memberPackage.isCurrentlyPaused
+                                          ? Colors.orange.withValues(
+                                              alpha: 0.12,
+                                            )
+                                          : AppTheme.primaryColor.withValues(
+                                              alpha: 0.1,
+                                            ),
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: Text(
+                                      memberPackage.isCurrentlyPaused
+                                          ? '정지 중'
+                                          : '이용 중',
+                                      style: TextStyle(
+                                        color: memberPackage.isCurrentlyPaused
+                                            ? Colors.orange.shade700
+                                            : AppTheme.primaryColor,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                memberPackage.organizationName ?? '',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade500,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                '잔여 ${memberPackage.remainingSessions}/${memberPackage.totalSessions}회',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '현재 만료일: $expiryLabel',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+                              if (memberPackage.pauseExtensionDays > 0) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  '정지 승인으로 총 ${memberPackage.pauseExtensionDays}일 연장됨',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.blueGrey.shade600,
+                                  ),
+                                ),
+                              ],
+                              if (memberPackage.hasPendingPauseRequest &&
+                                  pendingRange != null) ...[
+                                const SizedBox(height: 10),
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.orange.withValues(
+                                      alpha: 0.08,
+                                    ),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    '정지 신청 검토 중: $pendingRange',
+                                    style: TextStyle(
+                                      color: Colors.orange.shade800,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                              if (memberPackage.isCurrentlyPaused &&
+                                  activeRange != null) ...[
+                                const SizedBox(height: 10),
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.orange.withValues(
+                                      alpha: 0.08,
+                                    ),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    '현재 정지 기간: $activeRange',
+                                    style: TextStyle(
+                                      color: Colors.orange.shade800,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                              const SizedBox(height: 12),
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton(
+                                  onPressed:
+                                      memberPackage.status != 'ACTIVE' ||
+                                          memberPackage
+                                              .hasPendingPauseRequest ||
+                                          memberPackage.isCurrentlyPaused
+                                      ? null
+                                      : () => _openPauseRequestSheet(
+                                          memberPackage,
+                                        ),
+                                  child: Text(
+                                    memberPackage.hasPendingPauseRequest
+                                        ? '정지 신청 검토중'
+                                        : memberPackage.isCurrentlyPaused
+                                        ? '현재 정지 중'
+                                        : '패키지 정지 신청',
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                  ],
+                ),
+              ),
+            ),
 
           // My classes header
           if (classes.isNotEmpty)
@@ -292,9 +744,7 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
 
           // Content
           if (classes.isEmpty)
-            SliverFillRemaining(
-              child: _EmptyState(onJoin: _showJoinDialog),
-            )
+            SliverFillRemaining(child: _EmptyState(onJoin: _showJoinDialog))
           else
             SliverPadding(
               padding: const EdgeInsets.all(20),
@@ -308,6 +758,8 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
                         '/member/class/${classes[index].organizationId}',
                         extra: classes[index].organizationName,
                       ),
+                      onCoachTap: (coach) =>
+                          _openChatWithCoach(classes[index], coach),
                     ),
                   ),
                   childCount: classes.length,
@@ -405,80 +857,97 @@ class _EmptyState extends StatelessWidget {
 class _ClassCard extends StatelessWidget {
   final MemberClass memberClass;
   final VoidCallback? onTap;
+  final void Function(MemberCoach coach)? onCoachTap;
 
-  const _ClassCard({required this.memberClass, this.onTap});
+  const _ClassCard({required this.memberClass, this.onTap, this.onCoachTap});
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: AppTheme.softShadow,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.fitness_center,
-                  color: AppTheme.primaryColor,
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Text(
-                  memberClass.organizationName,
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black87,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: AppTheme.softShadow,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.fitness_center,
+                    color: AppTheme.primaryColor,
+                    size: 24,
                   ),
                 ),
-              ),
-            ],
-          ),
-          if (memberClass.coaches.isNotEmpty) ...[
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: memberClass.coaches.map((coach) {
-                return Chip(
-                  avatar: CircleAvatar(
-                    backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.15),
-                    child: Text(
-                      coach.name.isNotEmpty ? coach.name[0] : '?',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.primaryColor,
-                      ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    memberClass.organizationName,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.black87,
                     ),
                   ),
-                  label: Text(
-                    coach.name,
-                    style: const TextStyle(fontSize: 13),
-                  ),
-                  backgroundColor: Colors.grey.shade50,
-                );
-              }).toList(),
+                ),
+              ],
             ),
+            if (memberClass.coaches.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: memberClass.coaches.map((coach) {
+                  return ActionChip(
+                    onPressed: onCoachTap == null
+                        ? null
+                        : () => onCoachTap!(coach),
+                    avatar: CircleAvatar(
+                      backgroundColor: AppTheme.primaryColor.withValues(
+                        alpha: 0.15,
+                      ),
+                      child: Text(
+                        coach.name.isNotEmpty ? coach.name[0] : '?',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.primaryColor,
+                        ),
+                      ),
+                    ),
+                    label: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          coach.name,
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.chat_bubble_outline,
+                          size: 14,
+                          color: Colors.grey.shade600,
+                        ),
+                      ],
+                    ),
+                    backgroundColor: Colors.grey.shade50,
+                  );
+                }).toList(),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
-    ),
     );
   }
 }

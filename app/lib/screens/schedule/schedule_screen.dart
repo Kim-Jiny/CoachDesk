@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -111,6 +112,191 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     }
   }
 
+  Future<void> _adjustReservationTime(Reservation reservation) async {
+    final deltaMinutes = await _showTimeAdjustDialog(reservation);
+    if (deltaMinutes == null || !mounted) return;
+
+    final conflict = _findConflictingReservation(reservation, deltaMinutes);
+    var force = false;
+    if (conflict != null) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('겹치는 수업이 있어요'),
+          content: Text(
+            '${conflict.startTime} - ${conflict.endTime} '
+            '${conflict.memberName ?? '다른 수업'}과(와) 겹칩니다.\n'
+            '그래도 시간을 조정하시겠어요?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('취소'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.errorColor,
+              ),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('그래도 진행'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+      force = true;
+    }
+
+    try {
+      final dio = ref.read(dioProvider);
+      await dio.patch(
+        '/reservations/${reservation.id}/delay',
+        data: {'delayMinutes': deltaMinutes, 'force': force},
+      );
+      await _refreshAll();
+      if (!mounted) return;
+      final absMinutes = deltaMinutes.abs();
+      final direction = deltaMinutes > 0 ? '미뤘습니다' : '앞당겼습니다';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('예약을 $absMinutes분 $direction')),
+      );
+    } on DioException catch (e) {
+      if (!mounted) return;
+      final message =
+          e.response?.data?['error'] as String? ?? '예약 시간 조정에 실패했습니다';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('예약 시간 조정에 실패했습니다')),
+      );
+    }
+  }
+
+  Future<int?> _showTimeAdjustDialog(Reservation reservation) {
+    final controller = TextEditingController(text: '10');
+    var isDelay = true;
+    String? errorText;
+
+    return showDialog<int>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('수업 시간 조절'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '현재 ${reservation.startTime} - ${reservation.endTime}',
+                    style: TextStyle(
+                      color: Colors.grey.shade600,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SegmentedButton<bool>(
+                    segments: const [
+                      ButtonSegment(
+                        value: false,
+                        label: Text('앞당기기'),
+                        icon: Icon(Icons.arrow_back_rounded),
+                      ),
+                      ButtonSegment(
+                        value: true,
+                        label: Text('미루기'),
+                        icon: Icon(Icons.arrow_forward_rounded),
+                      ),
+                    ],
+                    selected: {isDelay},
+                    onSelectionChanged: (selection) {
+                      setState(() => isDelay = selection.first);
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: controller,
+                    autofocus: true,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    decoration: InputDecoration(
+                      labelText: '조절할 시간 (분)',
+                      hintText: '1 - 120',
+                      suffixText: '분',
+                      border: const OutlineInputBorder(),
+                      errorText: errorText,
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('취소'),
+                ),
+                FilledButton(
+                  onPressed: () {
+                    final value = int.tryParse(controller.text.trim());
+                    if (value == null || value <= 0 || value > 120) {
+                      setState(() => errorText = '1에서 120 사이의 값을 입력해주세요');
+                      return;
+                    }
+                    Navigator.pop(dialogContext, isDelay ? value : -value);
+                  },
+                  child: const Text('적용'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Reservation? _findConflictingReservation(
+    Reservation reservation,
+    int deltaMinutes,
+  ) {
+    final newStart = _shiftTime(reservation.startTime, deltaMinutes);
+    final newEnd = _shiftTime(reservation.endTime, deltaMinutes);
+    if (newStart == null || newEnd == null) return null;
+
+    final reservations = ref.read(reservationProvider).reservations;
+    for (final other in reservations) {
+      if (other.id == reservation.id) continue;
+      if (other.coachId != reservation.coachId) continue;
+      if (!_isSameDay(other.date, reservation.date)) continue;
+      if (other.status != 'CONFIRMED' && other.status != 'PENDING') continue;
+      if (_overlapsTime(newStart, newEnd, other.startTime, other.endTime)) {
+        return other;
+      }
+    }
+    return null;
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  String? _shiftTime(String time, int deltaMinutes) {
+    final parts = time.split(':');
+    if (parts.length < 2) return null;
+    final hour = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour == null || minute == null) return null;
+    final total = hour * 60 + minute + deltaMinutes;
+    if (total < 0 || total >= 24 * 60) return null;
+    final h = (total ~/ 60).toString().padLeft(2, '0');
+    final m = (total % 60).toString().padLeft(2, '0');
+    return '$h:$m';
+  }
+
+  bool _overlapsTime(String aStart, String aEnd, String bStart, String bEnd) {
+    return aStart.compareTo(bEnd) < 0 && bStart.compareTo(aEnd) < 0;
+  }
+
   Future<void> _openReservationFlow(Reservation reservation) async {
     final canComplete = _canCompleteReservation(reservation);
     final action = await showModalBottomSheet<String>(
@@ -206,6 +392,17 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                     onTap: () => Navigator.pop(context, 'reject'),
                   ),
                 ] else if (reservation.status == 'CONFIRMED') ...[
+                  const SizedBox(height: 4),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(
+                      Icons.schedule_rounded,
+                      color: AppTheme.primaryColor,
+                    ),
+                    title: const Text('수업 시간 조절'),
+                    subtitle: const Text('앞당기거나 미룰 분 수를 입력합니다'),
+                    onTap: () => Navigator.pop(context, 'adjust'),
+                  ),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: Icon(
@@ -237,6 +434,9 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     } else if (action == 'member') {
       if (!mounted) return;
       await context.push('/members/${reservation.memberId}');
+    } else if (action == 'adjust') {
+      if (!mounted) return;
+      await _adjustReservationTime(reservation);
     } else if (action == 'complete') {
       if (!mounted) return;
       final result = await context.push('/reservations/complete', extra: reservation);
@@ -392,6 +592,86 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     }
   }
 
+  Future<void> _showEmptySlotActions(Map<String, dynamic> slot) async {
+    final isBlocked = slot['blocked'] == true;
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${DateFormat('M월 d일 (E)', 'ko').format(_selectedDay)} ${slot['startTime']} - ${slot['endTime']}',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '${slot['coachName'] ?? ''} 코치',
+                style: TextStyle(color: Colors.grey.shade600),
+              ),
+              const SizedBox(height: 20),
+              if (!isBlocked) ...[
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.person_add_alt_rounded, color: AppTheme.primaryColor),
+                  title: const Text('회원으로 예약 채워넣기'),
+                  subtitle: const Text('등록된 회원을 선택해 바로 예약을 만들어요'),
+                  onTap: () => Navigator.pop(context, 'reserve'),
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.block_rounded, color: AppTheme.errorColor),
+                  title: const Text('예약 마감 처리'),
+                  subtitle: const Text('이 시간대를 더 이상 예약할 수 없게 막아요'),
+                  onTap: () => Navigator.pop(context, 'close'),
+                ),
+              ] else ...[
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.lock_open_rounded, color: AppTheme.successColor),
+                  title: const Text('예약 마감 해제'),
+                  subtitle: const Text('막아둔 시간대를 다시 예약 가능하게 열어요'),
+                  onTap: () => Navigator.pop(context, 'reopen'),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (!mounted || action == null) return;
+
+    if (action == 'reserve') {
+      final result = await context.push('/reservations/new', extra: {
+        'date': DateFormat('yyyy-MM-dd').format(_selectedDay),
+        'startTime': slot['startTime'],
+        'endTime': slot['endTime'],
+        'coachId': slot['coachId'],
+      });
+      if (result == true) {
+        _loadReservations();
+        _loadSlots();
+      }
+      return;
+    }
+
+    if (action == 'close') {
+      await _closeSlot(slot);
+      return;
+    }
+
+    if (action == 'reopen') {
+      await _reopenSlot(slot);
+    }
+  }
+
   Future<void> _closeSlot(Map<String, dynamic> slot) async {
     final confirmed = await showModalBottomSheet<bool>(
       context: context,
@@ -467,6 +747,36 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('예약 마감 처리에 실패했습니다')),
+      );
+    }
+  }
+
+  Future<void> _reopenSlot(Map<String, dynamic> slot) async {
+    final overrideId = slot['blockedOverrideId'] as String?;
+    if (overrideId == null || overrideId.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('마감 해제 정보를 찾지 못했습니다')),
+      );
+      return;
+    }
+
+    try {
+      final dio = ref.read(dioProvider);
+      await dio.delete('/schedules/overrides/$overrideId');
+      await _refreshAll();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('예약 마감을 해제했습니다')),
+      );
+    } on DioException catch (e) {
+      if (!mounted) return;
+      final message = e.response?.data?['error'] as String? ?? '예약 마감 해제에 실패했습니다';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('예약 마감 해제에 실패했습니다')),
       );
     }
   }
@@ -893,7 +1203,13 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                             return EmptySlotCard(
                               slot: item.slot!,
                               isPast: isPast,
-                              onTap: isPast ? null : () => _closeSlot(item.slot!),
+                              title: item.slot!['blocked'] == true
+                                  ? '예약 마감된 타임'
+                                  : null,
+                              subtitle: item.slot!['blocked'] == true
+                                  ? '눌러서 마감 해제'
+                                  : null,
+                              onTap: isPast ? null : () => _showEmptySlotActions(item.slot!),
                             );
                           }
                         },

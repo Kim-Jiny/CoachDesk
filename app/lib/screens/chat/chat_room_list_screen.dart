@@ -64,10 +64,11 @@ class _ChatRoomListScreenState extends ConsumerState<ChatRoomListScreen> {
                     itemCount: state.rooms.length,
                     itemBuilder: (context, index) {
                       final room = state.rooms[index];
+                      final basePath = isMember ? '/member/chat' : '/chat';
                       return _ChatRoomTile(
                         room: room,
                         isMember: isMember,
-                        onTap: () => context.push('/chat/${room.id}'),
+                        onTap: () => context.push('$basePath/${room.id}'),
                       );
                     },
                   ),

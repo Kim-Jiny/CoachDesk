@@ -13,6 +13,8 @@ model Organization {
   name               String
   description        String?
   logoUrl            String?
+  reservationNoticeText String?
+  reservationNoticeImageUrl String?
   inviteCode         String            @unique
   bookingMode        BookingMode       @default(PRIVATE)
   reservationPolicy  ReservationPolicy @default(AUTO_CONFIRM)
@@ -20,6 +22,7 @@ model Organization {
   updatedAt          DateTime          @updatedAt
 
   memberships OrgMembership[]
+  memberGroups MemberGroup[]
   members     Member[]
   schedules   Schedule[]
   scheduleOverrides ScheduleOverride[]
@@ -82,11 +85,27 @@ enum OrgRole {
   COACH
 }
 
+model MemberGroup {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  sortOrder      Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  members        Member[]
+
+  @@index([organizationId, sortOrder])
+}
+
 // ─── Member (고객) ─────────────────────────────────────────
 model Member {
   id              String       @id @default(uuid())
   organizationId  String
   organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  memberGroupId   String?
+  memberGroup     MemberGroup? @relation(fields: [memberGroupId], references: [id], onDelete: SetNull)
   name            String
   phone           String?
   email           String?
@@ -96,6 +115,7 @@ model Member {
   status          MemberStatus @default(ACTIVE)
   memberAccountId String?
   memberAccount   MemberAccount? @relation(fields: [memberAccountId], references: [id])
+  sortOrder       Int          @default(0)
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
@@ -213,6 +233,7 @@ model Package {
   price          Int          // KRW
   validDays      Int?         // null = unlimited
   isActive       Boolean      @default(true)
+  isPublic       Boolean      @default(false)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -234,6 +255,13 @@ model MemberPackage {
   paidAmount        Int
   paymentMethod     PaymentMethod       @default(CASH)
   status            MemberPackageStatus @default(ACTIVE)
+  pauseStartDate    DateTime?           @db.Date
+  pauseEndDate      DateTime?           @db.Date
+  pauseRequestedStartDate DateTime?     @db.Date
+  pauseRequestedEndDate   DateTime?     @db.Date
+  pauseRequestStatus PauseRequestStatus @default(NONE)
+  pauseRequestReason String?
+  pauseExtensionDays Int                @default(0)
   createdAt         DateTime            @default(now())
   updatedAt         DateTime            @updatedAt
 
@@ -251,6 +279,11 @@ enum MemberPackageStatus {
   EXPIRED
   EXHAUSTED
   REFUNDED
+}
+
+enum PauseRequestStatus {
+  NONE
+  PENDING
 }
 
 // ─── Session (완료된 세션 기록) ────────────────────────────

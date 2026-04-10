@@ -84,6 +84,36 @@ router.post('/rooms', async (req: Request, res: Response) => {
       return;
     }
 
+    const [membership, member] = await Promise.all([
+      prisma.orgMembership.findUnique({
+        where: {
+          userId_organizationId: {
+            userId: body.userId,
+            organizationId: body.organizationId,
+          },
+        },
+        select: { id: true },
+      }),
+      prisma.member.findFirst({
+        where: {
+          organizationId: body.organizationId,
+          memberAccountId: body.memberAccountId,
+          status: 'ACTIVE',
+        },
+        select: { id: true },
+      }),
+    ]);
+
+    if (!membership) {
+      res.status(403).json({ error: 'User is not part of this organization' });
+      return;
+    }
+
+    if (!member) {
+      res.status(403).json({ error: 'Member account is not active in this organization' });
+      return;
+    }
+
     const room = await prisma.chatRoom.upsert({
       where: {
         organizationId_userId_memberAccountId: {

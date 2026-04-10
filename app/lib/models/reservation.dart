@@ -10,6 +10,9 @@ class Reservation {
   final String? quickMemo;
   final String? memberQuickMemo;
   final String? memo;
+  final int delayMinutes;
+  final String? originalStartTime;
+  final String? originalEndTime;
   final String? memberName;
   final String? coachName;
   final bool isMemberBooked;
@@ -26,6 +29,9 @@ class Reservation {
     this.quickMemo,
     this.memberQuickMemo,
     this.memo,
+    this.delayMinutes = 0,
+    this.originalStartTime,
+    this.originalEndTime,
     this.memberName,
     this.coachName,
     this.isMemberBooked = false,
@@ -50,6 +56,9 @@ class Reservation {
       quickMemo: json['quickMemo'] as String?,
       memberQuickMemo: json['memberQuickMemo'] as String?,
       memo: json['memo'] as String?,
+      delayMinutes: json['delayMinutes'] as int? ?? 0,
+      originalStartTime: json['originalStartTime'] as String?,
+      originalEndTime: json['originalEndTime'] as String?,
       memberName: member?['name'] as String?,
       coachName: json['coach']?['name'] as String?,
       isMemberBooked: member?['memberAccountId'] != null,
@@ -64,5 +73,8 @@ class Reservation {
     'quickMemo': quickMemo,
     'memberQuickMemo': memberQuickMemo,
     'memo': memo,
+    'delayMinutes': delayMinutes,
+    'originalStartTime': originalStartTime,
+    'originalEndTime': originalEndTime,
   };
 }

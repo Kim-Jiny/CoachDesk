@@ -6,6 +6,7 @@ class Package {
   final int price;
   final int? validDays;
   final bool isActive;
+  final bool isPublic;
   final DateTime createdAt;
 
   const Package({
@@ -16,6 +17,7 @@ class Package {
     required this.price,
     this.validDays,
     required this.isActive,
+    required this.isPublic,
     required this.createdAt,
   });
 
@@ -28,6 +30,7 @@ class Package {
       price: json['price'] as int,
       validDays: json['validDays'] as int?,
       isActive: json['isActive'] as bool? ?? true,
+      isPublic: json['isPublic'] as bool? ?? false,
       createdAt: DateTime.parse(json['createdAt'] as String),
     );
   }
@@ -37,6 +40,8 @@ class Package {
     'totalSessions': totalSessions,
     'price': price,
     'validDays': validDays,
+    'isActive': isActive,
+    'isPublic': isPublic,
   };
 }
 
@@ -52,6 +57,15 @@ class MemberPackage {
   final int paidAmount;
   final String paymentMethod;
   final String status;
+  final DateTime? pauseStartDate;
+  final DateTime? pauseEndDate;
+  final DateTime? pauseRequestedStartDate;
+  final DateTime? pauseRequestedEndDate;
+  final String pauseRequestStatus;
+  final String? pauseRequestReason;
+  final int pauseExtensionDays;
+  final String? organizationName;
+  final String? memberName;
   final Package? package;
 
   const MemberPackage({
@@ -66,8 +80,36 @@ class MemberPackage {
     required this.paidAmount,
     required this.paymentMethod,
     required this.status,
+    this.pauseStartDate,
+    this.pauseEndDate,
+    this.pauseRequestedStartDate,
+    this.pauseRequestedEndDate,
+    this.pauseRequestStatus = 'NONE',
+    this.pauseRequestReason,
+    this.pauseExtensionDays = 0,
+    this.organizationName,
+    this.memberName,
     this.package,
   });
+
+  bool get isCurrentlyPaused {
+    if (pauseStartDate == null || pauseEndDate == null) return false;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final start = DateTime(
+      pauseStartDate!.year,
+      pauseStartDate!.month,
+      pauseStartDate!.day,
+    );
+    final end = DateTime(
+      pauseEndDate!.year,
+      pauseEndDate!.month,
+      pauseEndDate!.day,
+    );
+    return !today.isBefore(start) && !today.isAfter(end);
+  }
+
+  bool get hasPendingPauseRequest => pauseRequestStatus == 'PENDING';
 
   factory MemberPackage.fromJson(Map<String, dynamic> json) {
     return MemberPackage(
@@ -78,11 +120,33 @@ class MemberPackage {
       usedSessions: json['usedSessions'] as int,
       remainingSessions: json['remainingSessions'] as int,
       purchaseDate: DateTime.parse(json['purchaseDate'] as String),
-      expiryDate: json['expiryDate'] != null ? DateTime.parse(json['expiryDate'] as String) : null,
+      expiryDate: json['expiryDate'] != null
+          ? DateTime.parse(json['expiryDate'] as String)
+          : null,
       paidAmount: json['paidAmount'] as int,
       paymentMethod: json['paymentMethod'] as String? ?? 'CASH',
       status: json['status'] as String? ?? 'ACTIVE',
-      package: json['package'] != null ? Package.fromJson(json['package'] as Map<String, dynamic>) : null,
+      pauseStartDate: json['pauseStartDate'] != null
+          ? DateTime.parse(json['pauseStartDate'] as String)
+          : null,
+      pauseEndDate: json['pauseEndDate'] != null
+          ? DateTime.parse(json['pauseEndDate'] as String)
+          : null,
+      pauseRequestedStartDate: json['pauseRequestedStartDate'] != null
+          ? DateTime.parse(json['pauseRequestedStartDate'] as String)
+          : null,
+      pauseRequestedEndDate: json['pauseRequestedEndDate'] != null
+          ? DateTime.parse(json['pauseRequestedEndDate'] as String)
+          : null,
+      pauseRequestStatus: json['pauseRequestStatus'] as String? ?? 'NONE',
+      pauseRequestReason: json['pauseRequestReason'] as String?,
+      pauseExtensionDays: json['pauseExtensionDays'] as int? ?? 0,
+      organizationName:
+          (json['organization'] as Map<String, dynamic>?)?['name'] as String?,
+      memberName: (json['member'] as Map<String, dynamic>?)?['name'] as String?,
+      package: json['package'] != null
+          ? Package.fromJson(json['package'] as Map<String, dynamic>)
+          : null,
     );
   }
 }

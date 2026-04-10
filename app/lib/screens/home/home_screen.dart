@@ -14,7 +14,9 @@ final dashboardProvider = FutureProvider.autoDispose((ref) async {
   return response.data as Map<String, dynamic>;
 });
 
-final unreadNotificationCountProvider = FutureProvider.autoDispose<int>((ref) async {
+final unreadNotificationCountProvider = FutureProvider.autoDispose<int>((
+  ref,
+) async {
   final dio = ref.watch(dioProvider);
   final response = await dio.get('/notifications/unread-count');
   return response.data['count'] as int? ?? 0;
@@ -73,7 +75,10 @@ class HomeScreen extends ConsumerWidget {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              DateFormat('yyyy년 M월 d일 (E)', 'ko').format(DateTime.now()),
+                              DateFormat(
+                                'yyyy년 M월 d일 (E)',
+                                'ko',
+                              ).format(DateTime.now()),
                               style: TextStyle(
                                 fontSize: 14,
                                 color: Colors.white.withValues(alpha: 0.8),
@@ -90,7 +95,10 @@ class HomeScreen extends ConsumerWidget {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: IconButton(
-                                icon: const Icon(Icons.notifications_outlined, color: Colors.white),
+                                icon: const Icon(
+                                  Icons.notifications_outlined,
+                                  color: Colors.white,
+                                ),
                                 onPressed: () => context.push('/notifications'),
                               ),
                             ),
@@ -100,11 +108,19 @@ class HomeScreen extends ConsumerWidget {
                                       top: -2,
                                       right: -2,
                                       child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 2,
+                                        ),
                                         decoration: BoxDecoration(
                                           color: AppTheme.errorColor,
-                                          borderRadius: BorderRadius.circular(999),
-                                          border: Border.all(color: Colors.white, width: 2),
+                                          borderRadius: BorderRadius.circular(
+                                            999,
+                                          ),
+                                          border: Border.all(
+                                            color: Colors.white,
+                                            width: 2,
+                                          ),
                                         ),
                                         child: Text(
                                           count > 99 ? '99+' : '$count',
@@ -132,10 +148,11 @@ class HomeScreen extends ConsumerWidget {
             // Dashboard content
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
                 child: dashboard.when(
                   data: (data) => _buildDashboard(context, data),
-                  loading: () => const ShimmerLoading(style: ShimmerStyle.stats),
+                  loading: () =>
+                      const ShimmerLoading(style: ShimmerStyle.stats),
                   error: (_, _) => const EmptyState(
                     icon: Icons.error_outline,
                     message: '데이터를 불러올 수 없습니다',
@@ -165,7 +182,7 @@ class HomeScreen extends ConsumerWidget {
           children: [
             Expanded(
               child: StatCard(
-                title: '오늘 세션',
+                title: '오늘 완료된 수업',
                 value: '${data['todaySessions'] ?? 0}',
                 icon: Icons.fitness_center,
                 color: Colors.blue,
@@ -178,6 +195,7 @@ class HomeScreen extends ConsumerWidget {
                 value: '${data['pendingReservations'] ?? 0}',
                 icon: Icons.schedule,
                 color: Colors.orange,
+                onTap: () => context.push('/reservations/pending'),
               ),
             ),
           ],
@@ -187,7 +205,7 @@ class HomeScreen extends ConsumerWidget {
           children: [
             Expanded(
               child: StatCard(
-                title: '활성 회원',
+                title: '패키지 이용 회원',
                 value: '${data['activeMembers'] ?? 0}',
                 icon: Icons.people,
                 color: AppTheme.successColor,
@@ -200,6 +218,8 @@ class HomeScreen extends ConsumerWidget {
                 value: '${formatter.format(data['monthRevenue'] ?? 0)}원',
                 icon: Icons.attach_money,
                 color: AppTheme.secondaryColor,
+                onTap: () =>
+                    context.push('/reports/revenue', extra: DateTime.now()),
               ),
             ),
           ],
@@ -270,7 +290,11 @@ class HomeScreen extends ConsumerWidget {
             ),
             child: Column(
               children: [
-                Icon(Icons.event_available, size: 40, color: Colors.grey.shade300),
+                Icon(
+                  Icons.event_available,
+                  size: 40,
+                  color: Colors.grey.shade300,
+                ),
                 const SizedBox(height: 12),
                 Text(
                   '오늘 예약이 없습니다',
@@ -280,7 +304,9 @@ class HomeScreen extends ConsumerWidget {
             ),
           )
         else
-          ...todayReservations.map((r) => _TimelineReservationCard(reservation: r)),
+          ...todayReservations.map(
+            (r) => _TimelineReservationCard(reservation: r),
+          ),
       ],
     );
   }
@@ -325,7 +351,10 @@ class _QuickActionCard extends StatelessWidget {
               child: Icon(icon, color: color, size: 20),
             ),
             const SizedBox(height: 12),
-            Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+            Text(
+              title,
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+            ),
             const SizedBox(height: 4),
             Text(
               subtitle,
@@ -386,7 +415,10 @@ class _TimelineReservationCard extends StatelessWidget {
             // Card
             Expanded(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(14),

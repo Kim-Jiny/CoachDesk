@@ -118,6 +118,9 @@ class TimelineScheduleCard extends StatelessWidget {
         ? primaryReservation.quickMemo!
         : primaryReservation.memberQuickMemo;
     final statusSummary = _buildStatusSummary(reservations);
+    final delaySummary = primaryReservation.delayMinutes > 0
+        ? '${primaryReservation.delayMinutes}분 지연'
+        : null;
     final displayName = reservations.length > 1
         ? '${primaryReservation.memberName ?? '예약자'} 외 +${reservations.length - 1}'
         : (primaryReservation.memberName ?? '');
@@ -206,6 +209,20 @@ class TimelineScheduleCard extends StatelessWidget {
                                   ),
                                 ),
                               ),
+                            if (delaySummary != null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 3),
+                                child: Text(
+                                  delaySummary,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.red.shade400,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
                             if (visibleMemo != null && visibleMemo.isNotEmpty)
                               Padding(
                                 padding: const EdgeInsets.only(top: 3),
@@ -286,22 +303,26 @@ class EmptySlotCard extends StatelessWidget {
   final Map<String, dynamic> slot;
   final bool isPast;
   final VoidCallback? onTap;
+  final String? title;
+  final String? subtitle;
 
   const EmptySlotCard({
     super.key,
     required this.slot,
     required this.isPast,
     this.onTap,
+    this.title,
+    this.subtitle,
   });
 
   @override
   Widget build(BuildContext context) {
-    final title = isPast ? '지난 빈 타임' : '예약 가능한 빈 타임';
-    final subtitle = isPast
+    final resolvedTitle = title ?? (isPast ? '지난 빈 타임' : '예약 가능한 빈 타임');
+    final resolvedSubtitle = subtitle ?? (isPast
         ? '이미 지난 시간대입니다'
         : onTap != null
             ? '눌러서 예약 마감 처리'
-            : '현재 예약 가능한 시간대입니다';
+            : '현재 예약 가능한 시간대입니다');
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: IntrinsicHeight(
@@ -370,7 +391,7 @@ class EmptySlotCard extends StatelessWidget {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              title,
+                              resolvedTitle,
                               style: TextStyle(
                                 color: Colors.grey.shade700,
                                 fontWeight: FontWeight.w600,
@@ -379,7 +400,7 @@ class EmptySlotCard extends StatelessWidget {
                             Padding(
                               padding: const EdgeInsets.only(top: 3),
                               child: Text(
-                                subtitle,
+                                resolvedSubtitle,
                                 style: TextStyle(
                                   fontSize: 11,
                                   color: !isPast && onTap != null

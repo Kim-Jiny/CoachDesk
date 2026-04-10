@@ -20,6 +20,11 @@ import { isTimeRangeClosed } from '../utils/slot-blocking';
 import { findGeneratedSlot, getAvailableSlots } from '../utils/slot-service';
 import { emitReservationCreated, emitReservationCancelled } from '../socket/emitters';
 import { serializeReservation } from './reservation';
+import {
+  findMemberPackageCompat,
+  listMemberPackagesCompat,
+  updateMemberPackagePauseCompat,
+} from '../utils/member-package-access';
 
 function buildReservationStatusMessage(status: string, date: string, startTime: string) {
   if (status === 'PENDING') {
@@ -33,6 +38,13 @@ function buildReservationStatusMessage(status: string, date: string, startTime: 
     title: '새 예약',
     body: `회원이 ${date} ${startTime} 예약했습니다`,
   };
+}
+
+function calculatePauseDays(startDate: string, endDate: string) {
+  const start = parseDateOnly(startDate);
+  const end = parseDateOnly(endDate);
+  const diffMs = end.getTime() - start.getTime();
+  return Math.floor(diffMs / (24 * 60 * 60 * 1000)) + 1;
 }
 
 const router = Router();
@@ -555,6 +567,46 @@ router.get('/member/my-classes', authMiddleware, async (req: Request, res: Respo
   }
 });
 
+router.get('/member/studios/:orgId/reservation-notice', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const memberAccountId = req.user!.userId;
+    const orgId = req.params.orgId as string;
+
+    const member = await prisma.member.findFirst({
+      where: { organizationId: orgId, memberAccountId, status: 'ACTIVE' },
+    });
+    if (!member) {
+      res.status(403).json({ error: 'Not a member of this studio' });
+      return;
+    }
+
+    const organization = await prisma.organization.findUnique({
+      where: { id: orgId },
+      select: {
+        id: true,
+        name: true,
+        reservationNoticeText: true,
+        reservationNoticeImageUrl: true,
+      },
+    });
+
+    if (!organization) {
+      res.status(404).json({ error: 'Organization not found' });
+      return;
+    }
+
+    res.json({
+      organizationId: organization.id,
+      organizationName: organization.name,
+      reservationNoticeText: organization.reservationNoticeText,
+      reservationNoticeImageUrl: organization.reservationNoticeImageUrl,
+    });
+  } catch (err) {
+    console.error('Member reservation notice error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ─── Member: Get Available Slots for a Studio ────────────
 router.get('/member/studios/:orgId/slots', authMiddleware, async (req: Request, res: Response) => {
   try {
@@ -871,6 +923,119 @@ router.get('/member/my-reservations', authMiddleware, async (req: Request, res: 
     });
   } catch (err) {
     console.error('Member my-reservations error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+const memberPackagePauseRequestSchema = z.object({
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  reason: z.string().max(300).optional(),
+});
+
+router.get('/member/packages', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const memberAccountId = req.user!.userId;
+
+    const members = await prisma.member.findMany({
+      where: { memberAccountId, status: 'ACTIVE' },
+      select: { id: true, organizationId: true },
+    });
+
+    if (members.length === 0) {
+      res.json({ packages: [] });
+      return;
+    }
+
+    const memberPackages = await listMemberPackagesCompat({
+      memberIds: members.map((member) => member.id),
+    });
+
+    res.json({ packages: memberPackages });
+  } catch (err) {
+    console.error('Member packages error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/member/packages/:id/pause-request', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const body = memberPackagePauseRequestSchema.parse(req.body);
+    const memberAccountId = req.user!.userId;
+
+    if (body.endDate < body.startDate) {
+      res.status(400).json({ error: '종료일은 시작일보다 빠를 수 없습니다' });
+      return;
+    }
+
+    const today = getKstToday();
+    if (body.startDate < today) {
+      res.status(400).json({ error: '정지 시작일은 오늘 이후로 선택해주세요' });
+      return;
+    }
+
+    const memberPackage = await findMemberPackageCompat({ id: req.params.id as string });
+    if (!memberPackage || memberPackage.member?.memberAccountId !== memberAccountId) {
+      res.status(404).json({ error: '패키지를 찾을 수 없습니다' });
+      return;
+    }
+
+    if (memberPackage.status !== 'ACTIVE' || memberPackage.remainingSessions <= 0) {
+      res.status(400).json({ error: '사용 가능한 패키지에서만 정지 신청할 수 있습니다' });
+      return;
+    }
+
+    if (memberPackage.expiryDate && body.startDate > formatDateOnly(new Date(memberPackage.expiryDate))) {
+      res.status(400).json({ error: '만료 이후 기간은 정지 신청할 수 없습니다' });
+      return;
+    }
+
+    if (memberPackage.pauseRequestStatus === 'PENDING') {
+      res.status(400).json({ error: '이미 검토 중인 정지 신청이 있습니다' });
+      return;
+    }
+
+    const packageName = memberPackage.package?.name ?? '패키지';
+    const extensionDays = calculatePauseDays(body.startDate, body.endDate);
+
+    await updateMemberPackagePauseCompat(memberPackage.id, {
+      pauseRequestedStartDate: parseDateOnly(body.startDate),
+      pauseRequestedEndDate: parseDateOnly(body.endDate),
+      pauseRequestStatus: 'PENDING',
+      pauseRequestReason: body.reason?.trim() || null,
+    });
+
+    const adminUsers = await prisma.orgMembership.findMany({
+      where: {
+        organizationId: memberPackage.member?.organizationId,
+        role: { in: ['OWNER', 'ADMIN'] },
+        user: { fcmToken: { not: null } },
+      },
+      select: {
+        user: { select: { fcmToken: true } },
+      },
+    });
+
+    await Promise.all(adminUsers.map(async ({ user }) => {
+      if (!user.fcmToken) return;
+      await sendPush(
+        user.fcmToken,
+        '패키지 정지 신청',
+        `${memberPackage.member?.name ?? '회원'}님이 ${packageName} 정지를 신청했습니다`,
+        { memberPackageId: memberPackage.id },
+      );
+    }));
+
+    res.json({
+      message: `정지 신청이 접수되었습니다. 승인되면 만료일이 ${extensionDays}일 연장됩니다`,
+      extensionDays,
+    });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: err.errors });
+      return;
+    }
+    console.error('Member package pause request error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

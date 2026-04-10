@@ -21,6 +21,7 @@ import '../screens/members/member_detail_screen.dart';
 import '../screens/members/member_form_screen.dart';
 import '../screens/settings/settings_screen.dart';
 import '../screens/reservation/reservation_form_screen.dart';
+import '../screens/reservation/pending_reservations_screen.dart';
 import '../screens/packages/package_list_screen.dart';
 import '../screens/packages/package_form_screen.dart';
 import '../screens/packages/assign_package_screen.dart';
@@ -46,9 +47,16 @@ final shellBranchKeys = <int, GlobalKey<NavigatorState>>{
   4: GlobalKey<NavigatorState>(debugLabel: 'more'),
 };
 
-const _authPaths = {'/login', '/register', '/auth-select', '/member/login', '/member/register'};
+const _authPaths = {
+  '/login',
+  '/register',
+  '/auth-select',
+  '/member/login',
+  '/member/register',
+};
 
-bool _isMemberPath(String path) => path == '/member/home' || path.startsWith('/member/');
+bool _isMemberPath(String path) =>
+    path == '/member/home' || path.startsWith('/member/');
 
 final routerProvider = Provider<GoRouter>((ref) {
   final authNotifier = _AuthChangeNotifier(ref);
@@ -65,7 +73,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       final currentPath = state.matchedLocation;
 
       // Still initializing
-      if (adminStatus == AuthStatus.initial && memberStatus == MemberAuthStatus.initial) {
+      if (adminStatus == AuthStatus.initial &&
+          memberStatus == MemberAuthStatus.initial) {
         return currentPath == '/splash' ? null : '/splash';
       }
 
@@ -86,14 +95,20 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // Admin authenticated (not in member mode)
       if (adminAuth && !isMemberMode) {
-        if (_authPaths.contains(currentPath) || currentPath == '/splash') return '/home';
-        if (_isMemberPath(currentPath)) return '/home';
+        if (_authPaths.contains(currentPath) || currentPath == '/splash') {
+          return '/home';
+        }
+        if (_isMemberPath(currentPath)) {
+          return '/home';
+        }
         return null;
       }
 
       // Member authenticated (in member mode)
       if (memberAuth && isMemberMode) {
-        if (_authPaths.contains(currentPath) || currentPath == '/splash') return '/member/home';
+        if (_authPaths.contains(currentPath) || currentPath == '/splash') {
+          return '/member/home';
+        }
         return _isMemberPath(currentPath) ? null : '/member/home';
       }
 
@@ -114,10 +129,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/auth-select',
         builder: (context, state) => const AuthSelectScreen(),
       ),
-      GoRoute(
-        path: '/login',
-        builder: (context, state) => const LoginScreen(),
-      ),
+      GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
       GoRoute(
         path: '/register',
         builder: (context, state) => const RegisterScreen(),
@@ -146,16 +158,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/members/:id',
         parentNavigatorKey: rootNavigatorKey,
-        builder: (context, state) => MemberDetailScreen(
-          memberId: state.pathParameters['id']!,
-        ),
+        builder: (context, state) =>
+            MemberDetailScreen(memberId: state.pathParameters['id']!),
       ),
       GoRoute(
         path: '/members-form',
         parentNavigatorKey: rootNavigatorKey,
-        builder: (context, state) => MemberFormScreen(
-          member: state.extra as Map<String, dynamic>?,
-        ),
+        builder: (context, state) =>
+            MemberFormScreen(member: state.extra as Map<String, dynamic>?),
       ),
       GoRoute(
         path: '/reservations/new',
@@ -165,11 +175,15 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
       ),
       GoRoute(
+        path: '/reservations/pending',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) => const PendingReservationsScreen(),
+      ),
+      GoRoute(
         path: '/reservations/complete',
         parentNavigatorKey: rootNavigatorKey,
-        builder: (context, state) => SessionCompleteScreen(
-          reservation: state.extra as Reservation,
-        ),
+        builder: (context, state) =>
+            SessionCompleteScreen(reservation: state.extra as Reservation),
       ),
       // Package routes
       GoRoute(
@@ -180,9 +194,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/packages/form',
         parentNavigatorKey: rootNavigatorKey,
-        builder: (context, state) => PackageFormScreen(
-          package: state.extra as Package?,
-        ),
+        builder: (context, state) =>
+            PackageFormScreen(package: state.extra as Package?),
       ),
       GoRoute(
         path: '/packages/assign',
@@ -199,9 +212,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/sessions',
         parentNavigatorKey: rootNavigatorKey,
-        builder: (context, state) => SessionListScreen(
-          memberId: state.extra as String?,
-        ),
+        builder: (context, state) =>
+            SessionListScreen(memberId: state.extra as String?),
       ),
       GoRoute(
         path: '/notifications',
@@ -212,7 +224,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/reports/revenue',
         parentNavigatorKey: rootNavigatorKey,
-        builder: (context, state) => const RevenueReportScreen(),
+        builder: (context, state) =>
+            RevenueReportScreen(initialMonth: state.extra as DateTime?),
       ),
       GoRoute(
         path: '/reports/attendance',
@@ -234,9 +247,20 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/chat/:roomId',
         parentNavigatorKey: rootNavigatorKey,
-        builder: (context, state) => ChatScreen(
-          roomId: state.pathParameters['roomId']!,
-        ),
+        builder: (context, state) =>
+            ChatScreen(roomId: state.pathParameters['roomId']!),
+      ),
+      // Member chat routes
+      GoRoute(
+        path: '/member/chat',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) => const ChatRoomListScreen(),
+      ),
+      GoRoute(
+        path: '/member/chat/:roomId',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) =>
+            ChatScreen(roomId: state.pathParameters['roomId']!),
       ),
       // Main Shell with bottom navigation
       StatefulShellRoute.indexedStack(

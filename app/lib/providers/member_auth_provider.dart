@@ -6,6 +6,7 @@ import '../core/api_client.dart';
 import '../core/constants.dart';
 import '../core/fcm_service.dart';
 import '../models/member_booking.dart';
+import '../models/package.dart';
 
 enum MemberAuthStatus { initial, authenticated, unauthenticated }
 
@@ -29,7 +30,9 @@ class MemberClass {
       memberId: json['memberId'] as String,
       organizationId: org['id'] as String,
       organizationName: org['name'] as String,
-      coaches: coachList.map((c) => MemberCoach.fromJson(c as Map<String, dynamic>)).toList(),
+      coaches: coachList
+          .map((c) => MemberCoach.fromJson(c as Map<String, dynamic>))
+          .toList(),
     );
   }
 }
@@ -46,6 +49,33 @@ class MemberCoach {
       id: json['id'] as String,
       name: json['name'] as String,
       profileImage: json['profileImage'] as String?,
+    );
+  }
+}
+
+class MemberReservationNotice {
+  final String organizationId;
+  final String organizationName;
+  final String? text;
+  final String? imageUrl;
+
+  const MemberReservationNotice({
+    required this.organizationId,
+    required this.organizationName,
+    this.text,
+    this.imageUrl,
+  });
+
+  bool get hasContent =>
+      (text != null && text!.trim().isNotEmpty) ||
+      (imageUrl != null && imageUrl!.trim().isNotEmpty);
+
+  factory MemberReservationNotice.fromJson(Map<String, dynamic> json) {
+    return MemberReservationNotice(
+      organizationId: json['organizationId'] as String,
+      organizationName: json['organizationName'] as String? ?? '',
+      text: json['reservationNoticeText'] as String?,
+      imageUrl: json['reservationNoticeImageUrl'] as String?,
     );
   }
 }
@@ -141,11 +171,10 @@ class MemberAuthNotifier extends Notifier<MemberAuthState> {
   }) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      final response = await _dio.post('/auth/member/register', data: {
-        'name': name,
-        'email': email,
-        'password': password,
-      });
+      final response = await _dio.post(
+        '/auth/member/register',
+        data: {'name': name, 'email': email, 'password': password},
+      );
 
       await ApiClient.saveMemberTokens(
         accessToken: response.data['accessToken'],
@@ -177,10 +206,10 @@ class MemberAuthNotifier extends Notifier<MemberAuthState> {
   Future<bool> login({required String email, required String password}) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      final response = await _dio.post('/auth/member/login', data: {
-        'email': email,
-        'password': password,
-      });
+      final response = await _dio.post(
+        '/auth/member/login',
+        data: {'email': email, 'password': password},
+      );
 
       await ApiClient.saveMemberTokens(
         accessToken: response.data['accessToken'],
@@ -290,12 +319,28 @@ class MemberAuthNotifier extends Notifier<MemberAuthState> {
 
   Future<List<MemberSlot>> fetchSlots(String orgId, String date) async {
     try {
-      final response = await _dio.get('/auth/member/studios/$orgId/slots', queryParameters: {'date': date});
+      final response = await _dio.get(
+        '/auth/member/studios/$orgId/slots',
+        queryParameters: {'date': date},
+      );
       return (response.data as List)
           .map((json) => MemberSlot.fromJson(json as Map<String, dynamic>))
           .toList();
     } catch (_) {
       return [];
+    }
+  }
+
+  Future<MemberReservationNotice?> fetchReservationNotice(String orgId) async {
+    try {
+      final response = await _dio.get(
+        '/auth/member/studios/$orgId/reservation-notice',
+      );
+      return MemberReservationNotice.fromJson(
+        response.data as Map<String, dynamic>,
+      );
+    } catch (_) {
+      return null;
     }
   }
 
@@ -307,16 +352,54 @@ class MemberAuthNotifier extends Notifier<MemberAuthState> {
     required String endTime,
   }) async {
     try {
-      final response = await _dio.post('/auth/member/reserve', data: {
-        'organizationId': organizationId,
-        'coachId': coachId,
-        'date': date,
-        'startTime': startTime,
-        'endTime': endTime,
-      });
+      final response = await _dio.post(
+        '/auth/member/reserve',
+        data: {
+          'organizationId': organizationId,
+          'coachId': coachId,
+          'date': date,
+          'startTime': startTime,
+          'endTime': endTime,
+        },
+      );
       return response.data['status'] as String? ?? 'CONFIRMED';
     } catch (_) {
       return null;
+    }
+  }
+
+  Future<List<MemberPackage>> fetchMyPackages() async {
+    try {
+      final response = await _dio.get('/auth/member/packages');
+      return (response.data['packages'] as List? ?? [])
+          .map((json) => MemberPackage.fromJson(json as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<String?> requestPackagePause({
+    required String memberPackageId,
+    required String startDate,
+    required String endDate,
+    String? reason,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/auth/member/packages/$memberPackageId/pause-request',
+        data: {
+          'startDate': startDate,
+          'endDate': endDate,
+          if (reason != null && reason.trim().isNotEmpty)
+            'reason': reason.trim(),
+        },
+      );
+      return response.data['message'] as String?;
+    } on DioException catch (e) {
+      return e.response?.data?['error'] as String? ?? '패키지 정지 신청에 실패했습니다';
+    } catch (_) {
+      return '패키지 정지 신청에 실패했습니다';
     }
   }
 
@@ -333,7 +416,10 @@ class MemberAuthNotifier extends Notifier<MemberAuthState> {
     try {
       final response = await _dio.get('/auth/member/my-reservations');
       return (response.data['reservations'] as List)
-          .map((json) => MemberReservationSummary.fromJson(json as Map<String, dynamic>))
+          .map(
+            (json) =>
+                MemberReservationSummary.fromJson(json as Map<String, dynamic>),
+          )
           .toList();
     } catch (_) {
       return [];
@@ -362,4 +448,6 @@ class MemberAuthNotifier extends Notifier<MemberAuthState> {
 }
 
 final memberAuthProvider =
-    NotifierProvider<MemberAuthNotifier, MemberAuthState>(MemberAuthNotifier.new);
+    NotifierProvider<MemberAuthNotifier, MemberAuthState>(
+      MemberAuthNotifier.new,
+    );

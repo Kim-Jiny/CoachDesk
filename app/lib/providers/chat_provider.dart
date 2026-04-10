@@ -48,6 +48,7 @@ class ChatRoomListNotifier extends Notifier<ChatRoomListState> {
     final socket = SocketService.instance;
 
     void registerListeners() {
+      socket.off('chat:notification', _onChatNotification);
       socket.on('chat:notification', _onChatNotification);
     }
 
@@ -197,6 +198,8 @@ class ChatMessagesNotifier extends StateNotifier<ChatMessagesState> {
 
   void _registerListeners() {
     final socket = SocketService.instance;
+    socket.off('chat:message', _onMessage);
+    socket.off('chat:read', _onRead);
     socket.on('chat:message', _onMessage);
     socket.on('chat:read', _onRead);
   }

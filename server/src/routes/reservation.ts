@@ -5,7 +5,7 @@ import { authMiddleware } from '../middleware/auth';
 import { sendPush } from '../utils/firebase';
 import { getCurrentOrgId, isUserInOrganization } from '../utils/org-access';
 import { formatDateOnly, getKstDayOfWeek, hasKstTimePassed, parseDateOnly } from '../utils/kst-date';
-import { findFirstScheduleCompat, findFirstScheduleOverrideCompat } from '../utils/schedule-access';
+import { findFirstScheduleCompat, findFirstScheduleOverrideCompat, findScheduleOverridesCompat } from '../utils/schedule-access';
 import { decodeMemoFields, encodeMemoFields } from '../utils/memo-fields';
 import { isTimeRangeClosed } from '../utils/slot-blocking';
 import { findGeneratedSlot } from '../utils/slot-service';
@@ -38,7 +38,30 @@ export function serializeReservation<T extends {
     quickMemo: memoFields.quickMemo ?? null,
     memberQuickMemo: memberMemoFields.quickMemo ?? null,
     memo: memoFields.memo ?? null,
+    delayMinutes: memoFields.delayMinutes ?? 0,
+    originalStartTime: memoFields.originalStartTime ?? null,
+    originalEndTime: memoFields.originalEndTime ?? null,
   };
+}
+
+function addMinutesToTime(time: string, minutesToAdd: number): string {
+  const [hour, minute] = time.split(':').map(Number);
+  const total = hour * 60 + minute + minutesToAdd;
+  const normalized = ((total % (24 * 60)) + (24 * 60)) % (24 * 60);
+  return `${String(Math.floor(normalized / 60)).padStart(2, '0')}:${String(normalized % 60).padStart(2, '0')}`;
+}
+
+function isOverlappingTimeRange(
+  leftStart: string,
+  leftEnd: string,
+  rightStart: string,
+  rightEnd: string,
+) {
+  const leftStartMinutes = Number(leftStart.slice(0, 2)) * 60 + Number(leftStart.slice(3, 5));
+  const leftEndMinutes = Number(leftEnd.slice(0, 2)) * 60 + Number(leftEnd.slice(3, 5));
+  const rightStartMinutes = Number(rightStart.slice(0, 2)) * 60 + Number(rightStart.slice(3, 5));
+  const rightEndMinutes = Number(rightEnd.slice(0, 2)) * 60 + Number(rightEnd.slice(3, 5));
+  return leftStartMinutes < rightEndMinutes && leftEndMinutes > rightStartMinutes;
 }
 
 // ─── List Reservations ─────────────────────────────────────
@@ -327,6 +350,160 @@ router.patch('/:id/status', async (req: Request, res: Response) => {
     res.json(serialized);
   } catch (err) {
     console.error('Update reservation status error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+const delayReservationSchema = z.object({
+  delayMinutes: z
+    .number()
+    .int()
+    .min(-120)
+    .max(120)
+    .refine((v) => v !== 0, { message: 'delayMinutes must not be zero' }),
+  force: z.boolean().optional(),
+});
+
+router.patch('/:id/delay', async (req: Request, res: Response) => {
+  try {
+    const orgId = await getCurrentOrgId(req.user!.userId, req.header('x-organization-id') ?? undefined);
+    if (!orgId) { res.status(403).json({ error: 'No organization' }); return; }
+
+    const body = delayReservationSchema.parse(req.body);
+    const existingReservation = await findReservationInOrg(req.params.id as string, orgId);
+    if (!existingReservation) {
+      res.status(404).json({ error: 'Reservation not found' });
+      return;
+    }
+    if (!['PENDING', 'CONFIRMED'].includes(existingReservation.status)) {
+      res.status(400).json({ error: '대기 또는 확정 예약만 미룰 수 있습니다' });
+      return;
+    }
+
+    const newStartTime = addMinutesToTime(existingReservation.startTime, body.delayMinutes);
+    const newEndTime = addMinutesToTime(existingReservation.endTime, body.delayMinutes);
+    const dateStr = formatDateOnly(existingReservation.date);
+    const dayOfWeek = getKstDayOfWeek(dateStr);
+
+    const override = await findFirstScheduleOverrideCompat({
+      organizationId: orgId,
+      coachId: existingReservation.coachId,
+      date: existingReservation.date,
+    });
+    const closedOverrides = await findScheduleOverridesCompat({
+      organizationId: orgId,
+      coachId: existingReservation.coachId,
+      date: existingReservation.date,
+    });
+    const blockedByOverride = closedOverrides.some((candidate: { type: string; startTime?: string | null; endTime?: string | null }) =>
+      isTimeRangeClosed(candidate, newStartTime, newEndTime),
+    );
+    if (blockedByOverride) {
+      res.status(409).json({ error: '미룬 시간이 예약 마감 구간과 겹칩니다' });
+      return;
+    }
+
+    const schedule = override?.type === 'OPEN'
+      ? override
+      : await findFirstScheduleCompat({
+          organizationId: orgId,
+          coachId: existingReservation.coachId,
+          dayOfWeek,
+          isActive: true,
+        });
+
+    if (!schedule) {
+      res.status(409).json({ error: '해당 날짜에 적용 가능한 스케줄을 찾지 못했습니다' });
+      return;
+    }
+
+    const scheduleStart = (schedule.startTime ?? '') as string;
+    const scheduleEnd = (schedule.endTime ?? '') as string;
+    if (!scheduleStart || !scheduleEnd) {
+      res.status(409).json({ error: '해당 날짜에 적용 가능한 스케줄을 찾지 못했습니다' });
+      return;
+    }
+
+    const scheduleContainsRange =
+      !isOverlappingTimeRange(newStartTime, newEndTime, '00:00', scheduleStart) &&
+      !isOverlappingTimeRange(newStartTime, newEndTime, scheduleEnd, '24:00');
+    if (!scheduleContainsRange) {
+      res.status(409).json({ error: '미룬 시간이 코치 가용 시간 범위를 벗어납니다' });
+      return;
+    }
+
+    const conflictingReservations = await prisma.reservation.findMany({
+      where: {
+        organizationId: orgId,
+        coachId: existingReservation.coachId,
+        date: existingReservation.date,
+        status: { in: ['PENDING', 'CONFIRMED'] },
+        id: { not: existingReservation.id },
+      },
+      select: {
+        id: true,
+        startTime: true,
+        endTime: true,
+      },
+    });
+
+    if (!body.force && conflictingReservations.some((reservation) => isOverlappingTimeRange(
+      newStartTime,
+      newEndTime,
+      reservation.startTime,
+      reservation.endTime,
+    ))) {
+      res.status(409).json({ error: '조정한 시간이 다른 예약과 겹칩니다' });
+      return;
+    }
+
+    const memoFields = decodeMemoFields(existingReservation.memo);
+    const updated = await prisma.reservation.update({
+      where: { id: existingReservation.id },
+      data: {
+        startTime: newStartTime,
+        endTime: newEndTime,
+        memo: encodeMemoFields({
+          quickMemo: memoFields.quickMemo,
+          memo: memoFields.memo,
+          delayMinutes: (memoFields.delayMinutes ?? 0) + body.delayMinutes,
+          originalStartTime: memoFields.originalStartTime ?? existingReservation.startTime,
+          originalEndTime: memoFields.originalEndTime ?? existingReservation.endTime,
+        }),
+      },
+      include: {
+        member: { select: { id: true, name: true, memberAccountId: true, memo: true } },
+        coach: { select: { id: true, name: true } },
+      },
+    });
+
+    const serialized = serializeReservation(updated);
+    emitReservationUpdated(orgId, serialized, existingReservation.member.memberAccountId);
+
+    if (existingReservation.member.memberAccountId) {
+      const memberAccount = await prisma.memberAccount.findUnique({
+        where: { id: existingReservation.member.memberAccountId },
+        select: { fcmToken: true },
+      });
+      if (memberAccount?.fcmToken) {
+        const absMinutes = Math.abs(body.delayMinutes);
+        const direction = body.delayMinutes > 0 ? '미뤄져' : '앞당겨져';
+        sendPush(
+          memberAccount.fcmToken,
+          '예약 시간이 변경되었습니다',
+          `${dateStr} 예약이 ${absMinutes}분 ${direction} ${newStartTime}에 시작합니다`,
+          { type: 'RESERVATION_DELAYED', reservationId: updated.id },
+        );
+      }
+    }
+
+    res.json(serialized);
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: err.errors });
+      return;
+    }
+    console.error('Delay reservation error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
