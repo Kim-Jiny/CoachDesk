@@ -31,6 +31,8 @@ import '../screens/report/revenue_report_screen.dart';
 import '../screens/report/attendance_report_screen.dart';
 import '../screens/settings/schedule_setting_screen.dart';
 import '../screens/settings/team_management_screen.dart';
+import '../screens/chat/chat_room_list_screen.dart';
+import '../screens/chat/chat_screen.dart';
 import '../models/package.dart';
 import '../models/reservation.dart';
 
@@ -40,7 +42,8 @@ final shellBranchKeys = <int, GlobalKey<NavigatorState>>{
   0: GlobalKey<NavigatorState>(debugLabel: 'home'),
   1: GlobalKey<NavigatorState>(debugLabel: 'schedule'),
   2: GlobalKey<NavigatorState>(debugLabel: 'members'),
-  3: GlobalKey<NavigatorState>(debugLabel: 'more'),
+  3: GlobalKey<NavigatorState>(debugLabel: 'chat'),
+  4: GlobalKey<NavigatorState>(debugLabel: 'more'),
 };
 
 const _authPaths = {'/login', '/register', '/auth-select', '/member/login', '/member/register'};
@@ -227,6 +230,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         parentNavigatorKey: rootNavigatorKey,
         builder: (context, state) => const TeamManagementScreen(),
       ),
+      // Chat detail route (full-screen)
+      GoRoute(
+        path: '/chat/:roomId',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) => ChatScreen(
+          roomId: state.pathParameters['roomId']!,
+        ),
+      ),
       // Main Shell with bottom navigation
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) {
@@ -262,6 +273,15 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           StatefulShellBranch(
             navigatorKey: shellBranchKeys[3]!,
+            routes: [
+              GoRoute(
+                path: '/chat',
+                builder: (context, state) => const ChatRoomListScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            navigatorKey: shellBranchKeys[4]!,
             routes: [
               GoRoute(
                 path: '/settings',

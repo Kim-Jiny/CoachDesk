@@ -3,8 +3,8 @@ import 'package:flutter/foundation.dart';
 class AppConstants {
   AppConstants._();
 
-  static const String _defaultDebugHost = 'http://172.30.1.99:3010/api';
-  static const String _defaultReleaseHost = 'http://172.30.1.99:3010/api';
+  static const String _defaultDebugHost = 'http://172.30.1.35:3010/api';
+  static const String _defaultReleaseHost = 'http://172.30.1.35:3010/api';
   static const String _configuredHost = String.fromEnvironment('COACHDESK_API_BASE_URL', defaultValue: '');
   static const String _configuredDebugHost = String.fromEnvironment(
     'COACHDESK_API_BASE_URL_DEBUG',

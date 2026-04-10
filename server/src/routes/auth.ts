@@ -18,6 +18,8 @@ import {
 import { findFirstScheduleCompat, findFirstScheduleOverrideCompat, findScheduleOverridesCompat } from '../utils/schedule-access';
 import { isTimeRangeClosed } from '../utils/slot-blocking';
 import { findGeneratedSlot, getAvailableSlots } from '../utils/slot-service';
+import { emitReservationCreated, emitReservationCancelled } from '../socket/emitters';
+import { serializeReservation } from './reservation';
 
 function buildReservationStatusMessage(status: string, date: string, startTime: string) {
   if (status === 'PENDING') {
@@ -702,8 +704,15 @@ router.post('/member/reserve', authMiddleware, async (req: Request, res: Respons
           endTime: body.endTime,
           status: finalStatus,
         },
+        include: {
+          member: { select: { id: true, name: true, phone: true, memo: true } },
+          coach: { select: { id: true, name: true } },
+        },
       });
     });
+
+    // Socket.IO real-time emit
+    emitReservationCreated(body.organizationId, serializeReservation(reservation), memberAccountId);
 
     const coachMessage = buildReservationStatusMessage(finalStatus, body.date, body.startTime);
 
@@ -714,7 +723,7 @@ router.post('/member/reserve', authMiddleware, async (req: Request, res: Respons
       sendPush(
         coach.fcmToken,
         coachMessage.title,
-        `${memberAccount?.name ?? '회원'}님이 ${body.date} ${body.startTime} ${finalStatus == 'PENDING' ? '예약을 신청했습니다' : '예약했습니다'}`,
+        `${memberAccount?.name ?? '회원'}님이 ${body.date} ${body.startTime} ${finalStatus === 'PENDING' ? '예약을 신청했습니다' : '예약했습니다'}`,
         { type: 'NEW_RESERVATION', reservationId: reservation.id },
       );
     }
@@ -731,7 +740,7 @@ router.post('/member/reserve', authMiddleware, async (req: Request, res: Respons
       },
     });
 
-    res.status(201).json(reservation);
+    res.status(201).json(serializeReservation(reservation));
   } catch (err) {
     if (err instanceof Error && err.message === 'DUPLICATE') {
       res.status(409).json({ error: '이미 예약된 시간입니다' });
@@ -771,10 +780,22 @@ router.delete('/member/reservations/:id', authMiddleware, async (req: Request, r
       return;
     }
 
-    await prisma.reservation.update({
+    const updatedReservation = await prisma.reservation.update({
       where: { id: reservationId },
       data: { status: 'CANCELLED' },
+      include: {
+        member: { select: { id: true, name: true, phone: true, memo: true } },
+        coach: { select: { id: true, name: true } },
+      },
     });
+
+    // Socket.IO real-time emit
+    emitReservationCancelled(
+      reservation.organizationId,
+      serializeReservation(updatedReservation),
+      reservation.coachId,
+      memberAccountId,
+    );
 
     // Push notification to coach
     const coach = await prisma.user.findUnique({ where: { id: reservation.coachId }, select: { fcmToken: true } });

@@ -1,9 +1,11 @@
 import express from 'express';
+import { createServer } from 'http';
 import cors from 'cors';
 import morgan from 'morgan';
 import { env } from './config/env';
 import { prisma } from './utils/prisma';
 import { initializeFirebase } from './utils/firebase';
+import { initializeSocket } from './socket';
 
 import authRoutes from './routes/auth';
 import organizationRoutes from './routes/organization';
@@ -14,6 +16,7 @@ import packageRoutes from './routes/package';
 import sessionRoutes from './routes/session';
 import reportRoutes from './routes/report';
 import notificationRoutes from './routes/notification';
+import chatRoutes from './routes/chat';
 
 const app = express();
 
@@ -37,8 +40,12 @@ app.use('/api/packages', packageRoutes);
 app.use('/api/sessions', sessionRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/chat', chatRoutes);
 
 // Start server
+const httpServer = createServer(app);
+initializeSocket(httpServer);
+
 async function main() {
   try {
     await prisma.$connect();
@@ -46,7 +53,7 @@ async function main() {
 
     initializeFirebase();
 
-    app.listen(env.PORT, '0.0.0.0', () => {
+    httpServer.listen(env.PORT, '0.0.0.0', () => {
       console.log(`CoachDesk server running on http://0.0.0.0:${env.PORT}`);
     });
   } catch (err) {

@@ -27,6 +27,7 @@ model Organization {
   packages    Package[]
   sessions    Session[]
   notifications Notification[]
+  chatRooms     ChatRoom[]
 }
 
 enum BookingMode {
@@ -59,6 +60,7 @@ model User {
   reservations  Reservation[]    @relation("coachReservations")
   sessions      Session[]        @relation("coachSessions")
   notifications Notification[]
+  chatRooms     ChatRoom[]
 }
 
 // ─── OrgMembership (User ↔ Org) ───────────────────────────
@@ -127,6 +129,7 @@ model MemberAccount {
   updatedAt DateTime @updatedAt
 
   members   Member[]
+  chatRooms ChatRoom[]
 }
 
 // ─── Schedule (코치 가용 시간 템플릿) ──────────────────────
@@ -295,4 +298,50 @@ model Notification {
 
   @@index([userId, isRead])
   @@index([userId, createdAt])
+}
+
+// ─── ChatRoom (1:1 채팅방) ───────────────────────────────
+model ChatRoom {
+  id              String        @id @default(uuid())
+  organizationId  String
+  organization    Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  memberAccountId String
+  memberAccount   MemberAccount @relation(fields: [memberAccountId], references: [id], onDelete: Cascade)
+  lastMessageAt   DateTime?
+  createdAt       DateTime      @default(now())
+
+  messages        ChatMessage[]
+
+  @@unique([organizationId, userId, memberAccountId])
+  @@index([userId, lastMessageAt])
+  @@index([memberAccountId, lastMessageAt])
+}
+
+// ─── ChatMessage (채팅 메시지) ────────────────────────────
+model ChatMessage {
+  id          String      @id @default(uuid())
+  chatRoomId  String
+  chatRoom    ChatRoom    @relation(fields: [chatRoomId], references: [id], onDelete: Cascade)
+  senderType  SenderType
+  senderId    String
+  content     String
+  messageType MessageType @default(TEXT)
+  isRead      Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+
+  @@index([chatRoomId, createdAt])
+  @@index([chatRoomId, isRead])
+}
+
+enum SenderType {
+  USER
+  MEMBER
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  SYSTEM
 }

@@ -9,6 +9,7 @@ import { findFirstScheduleCompat, findFirstScheduleOverrideCompat } from '../uti
 import { decodeMemoFields, encodeMemoFields } from '../utils/memo-fields';
 import { isTimeRangeClosed } from '../utils/slot-blocking';
 import { findGeneratedSlot } from '../utils/slot-service';
+import { emitReservationCreated, emitReservationUpdated, emitReservationCancelled } from '../socket/emitters';
 
 const router = Router();
 router.use(authMiddleware);
@@ -23,7 +24,7 @@ async function findReservationInOrg(reservationId: string, organizationId: strin
   });
 }
 
-function serializeReservation<T extends {
+export function serializeReservation<T extends {
   date: Date;
   memo?: string | null;
   member?: { id: string; name: string; phone?: string | null; memberAccountId?: string | null; memo?: string | null } | null;
@@ -227,6 +228,11 @@ router.post('/', async (req: Request, res: Response) => {
       },
     });
 
+    const serialized = serializeReservation(reservation);
+
+    // Socket.IO real-time emit
+    emitReservationCreated(orgId, serialized, member?.memberAccountId);
+
     // Push notification to member's MemberAccount if linked
     if (member?.memberAccountId) {
       const memberAccount = await prisma.memberAccount.findUnique({
@@ -243,7 +249,7 @@ router.post('/', async (req: Request, res: Response) => {
       }
     }
 
-    res.status(201).json(serializeReservation(reservation));
+    res.status(201).json(serialized);
   } catch (err) {
     if (err instanceof z.ZodError) {
       res.status(400).json({ error: 'Validation error', details: err.errors });
@@ -277,10 +283,19 @@ router.patch('/:id/status', async (req: Request, res: Response) => {
       where: { id: existingReservation.id },
       data: { status },
       include: {
-        member: { select: { id: true, name: true } },
+        member: { select: { id: true, name: true, memberAccountId: true, memo: true } },
         coach: { select: { id: true, name: true } },
       },
     });
+
+    const serialized = serializeReservation(reservation);
+
+    // Socket.IO real-time emit
+    if (status === 'CANCELLED') {
+      emitReservationCancelled(orgId, serialized, undefined, existingReservation.member.memberAccountId);
+    } else {
+      emitReservationUpdated(orgId, serialized, existingReservation.member.memberAccountId);
+    }
 
     if (existingReservation.member.memberAccountId) {
       const memberAccount = await prisma.memberAccount.findUnique({
@@ -289,14 +304,14 @@ router.patch('/:id/status', async (req: Request, res: Response) => {
       });
 
       let notificationTitle = '예약 상태 변경';
-      let notificationBody = '${existingReservation.member.name}님의 예약 상태가 변경되었습니다';
+      let notificationBody = `${existingReservation.member.name}님의 예약 상태가 변경되었습니다`;
 
       if (status === 'CONFIRMED') {
         notificationTitle = '예약 승인';
-        notificationBody = '${existingReservation.member.name}님의 예약이 승인되었습니다';
+        notificationBody = `${existingReservation.member.name}님의 예약이 승인되었습니다`;
       } else if (status === 'CANCELLED') {
         notificationTitle = '예약 취소';
-        notificationBody = '${existingReservation.member.name}님의 예약이 취소되었습니다';
+        notificationBody = `${existingReservation.member.name}님의 예약이 취소되었습니다`;
       }
 
       if (memberAccount?.fcmToken) {
@@ -309,7 +324,7 @@ router.patch('/:id/status', async (req: Request, res: Response) => {
       }
     }
 
-    res.json(serializeReservation(reservation));
+    res.json(serialized);
   } catch (err) {
     console.error('Update reservation status error:', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -434,6 +449,15 @@ router.delete('/:id', async (req: Request, res: Response) => {
     }
 
     await prisma.reservation.delete({ where: { id: reservation.id } });
+
+    // Socket.IO real-time emit
+    emitReservationCancelled(
+      orgId,
+      { ...serializeReservation(reservation), deleted: true },
+      reservation.coach?.id,
+      reservation.member?.memberAccountId,
+    );
+
     res.json({ message: 'Reservation deleted' });
   } catch (err) {
     console.error('Delete reservation error:', err);
