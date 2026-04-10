@@ -22,9 +22,6 @@ app/build/
 .DS_Store
 Thumbs.db
 
-# Prisma
-server/prisma/migrations/
-
 # Flutter
 app/.flutter-plugins
 app/.flutter-plugins-dependencies
