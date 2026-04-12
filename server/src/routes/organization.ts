@@ -32,7 +32,7 @@ async function requireOrganizationEditor(userId: string, organizationId: string)
     where: { userId_organizationId: { userId, organizationId } },
   });
 
-  if (!membership || !['OWNER', 'ADMIN'].includes(membership.role)) {
+  if (!membership || membership.role !== 'OWNER') {
     return null;
   }
 
@@ -158,43 +158,11 @@ router.post('/:id/reservation-notice-image', async (req: Request, res: Response)
   }
 });
 
-// ─── Join Organization by Invite Code ──────────────────────
+// ─── Join Organization by Invite Code (deprecated: use POST /centers/join-request) ──
 router.post('/join', async (req: Request, res: Response) => {
-  try {
-    const { inviteCode } = req.body;
-    if (!inviteCode) {
-      res.status(400).json({ error: 'Invite code required' });
-      return;
-    }
-
-    const org = await prisma.organization.findUnique({ where: { inviteCode } });
-    if (!org) {
-      res.status(404).json({ error: 'Invalid invite code' });
-      return;
-    }
-
-    const existing = await prisma.orgMembership.findUnique({
-      where: { userId_organizationId: { userId: req.user!.userId, organizationId: org.id } },
-    });
-
-    if (existing) {
-      res.status(409).json({ error: 'Already a member of this organization' });
-      return;
-    }
-
-    await prisma.orgMembership.create({
-      data: {
-        userId: req.user!.userId,
-        organizationId: org.id,
-        role: 'COACH',
-      },
-    });
-
-    res.json({ message: 'Joined organization', organization: { id: org.id, name: org.name } });
-  } catch (err) {
-    console.error('Join org error:', err);
-    res.status(500).json({ error: 'Internal server error' });
-  }
+  res.status(410).json({
+    error: 'This endpoint is deprecated. Use POST /api/centers/join-request instead.',
+  });
 });
 
 export default router;

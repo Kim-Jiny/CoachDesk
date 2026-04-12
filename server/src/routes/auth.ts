@@ -4,18 +4,10 @@ import { prisma } from '../utils/prisma';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../utils/jwt';
 import { authMiddleware } from '../middleware/auth';
 import { sendPush } from '../utils/firebase';
-import { env } from '../config/env';
-import { verifyAppleIdentityToken } from '../utils/apple-auth';
 import {
   formatDateOnly,
 } from '../utils/kst-date';
 import { emitReservationCreated, emitReservationCancelled } from '../socket/emitters';
-import {
-  toMemberAccountPayload,
-  toMemberLinks,
-  toOrganizationPayload,
-  toUserPayload,
-} from '../features/auth/payloads';
 import {
   AuthFlowError,
   deleteMemberAccount,
@@ -67,8 +59,6 @@ import {
 } from '../features/reservation/member-reservation';
 import { serializeReservation } from '../features/reservation/serializer';
 import {
-} from '../utils/member-package-access';
-import {
   shouldSendPushForType,
 } from '../utils/notification-preferences';
 
@@ -79,7 +69,6 @@ const registerSchema = z.object({
   password: z.string().min(6),
   name: z.string().min(1),
   phone: z.string().optional(),
-  organizationName: z.string().optional(),
 });
 
 router.post('/register', async (req: Request, res: Response) => {
@@ -280,6 +269,10 @@ router.post('/member/join', authMiddleware, async (req: Request, res: Response) 
         res.status(404).json({ error: 'Invalid invite code' });
         return;
       }
+      if (err.code === 'MEMBER_LIMIT_REACHED') {
+        res.status(409).json({ error: '센터 회원 수가 최대 인원에 도달했습니다' });
+        return;
+      }
     }
     if (err instanceof z.ZodError) {
       res.status(400).json({ error: 'Validation error', details: err.errors });
@@ -329,6 +322,7 @@ router.get('/member/studios/:orgId/slots', authMiddleware, async (req: Request, 
       memberAccountId: req.user!.userId,
       organizationId: req.params.orgId as string,
       date: req.query.date as string | undefined,
+      coachId: req.query.coachId as string | undefined,
     }));
   } catch (err) {
     if (err instanceof MemberAccountQueryError) {
@@ -630,26 +624,16 @@ router.delete('/member/profile', authMiddleware, async (req: Request, res: Respo
 });
 
 // ─── Member → Admin Upgrade (회원→관리자 전환) ───────────
-const upgradeToAdminSchema = z.object({
-  organizationName: z.string().min(1),
-});
-
 router.post('/member/upgrade-to-admin', authMiddleware, async (req: Request, res: Response) => {
   try {
-    const body = upgradeToAdminSchema.parse(req.body);
     res.status(201).json(await upgradeToAdmin({
       memberAccountId: req.user!.userId,
-      organizationName: body.organizationName,
       generateAccessToken,
       generateRefreshToken,
     }));
   } catch (err) {
     if (err instanceof MemberAccountMutationError && err.code === 'MEMBER_ACCOUNT_NOT_FOUND') {
       res.status(403).json({ error: 'Member account not found' });
-      return;
-    }
-    if (err instanceof z.ZodError) {
-      res.status(400).json({ error: 'Validation error', details: err.errors });
       return;
     }
     console.error('Upgrade to admin error:', err);

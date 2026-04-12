@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { authMiddleware } from '../middleware/auth';
-import { requireCurrentOrgId, respondValidationError } from './_shared';
+import { requireCurrentOrgId, requireOrgRole, respondValidationError } from './_shared';
 import {
   createMember,
   createMemberGroup,
@@ -52,6 +52,7 @@ router.post('/groups', async (req: Request, res: Response) => {
   try {
     const orgId = await requireCurrentOrgId(req, res);
     if (!orgId) return;
+    if (!(await requireOrgRole(req, res, orgId, ['OWNER', 'MANAGER']))) return;
 
     const body = createMemberGroupSchema.parse(req.body);
     const group = await createMemberGroup({
@@ -71,6 +72,7 @@ router.put('/groups/:id', async (req: Request, res: Response) => {
   try {
     const orgId = await requireCurrentOrgId(req, res);
     if (!orgId) return;
+    if (!(await requireOrgRole(req, res, orgId, ['OWNER', 'MANAGER']))) return;
 
     const body = updateMemberGroupSchema.parse(req.body);
     const updated = await updateMemberGroup({
@@ -95,6 +97,7 @@ router.delete('/groups/:id', async (req: Request, res: Response) => {
   try {
     const orgId = await requireCurrentOrgId(req, res);
     if (!orgId) return;
+    if (!(await requireOrgRole(req, res, orgId, ['OWNER', 'MANAGER']))) return;
 
     await deleteMemberGroup({
       organizationId: orgId,
@@ -164,6 +167,7 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     const orgId = await requireCurrentOrgId(req, res);
     if (!orgId) return;
+    if (!(await requireOrgRole(req, res, orgId, ['OWNER', 'MANAGER']))) return;
 
     const body = createMemberSchema.parse(req.body);
     const member = await createMember({
@@ -195,6 +199,7 @@ router.put('/:id', async (req: Request, res: Response) => {
   try {
     const orgId = await requireCurrentOrgId(req, res);
     if (!orgId) return;
+    if (!(await requireOrgRole(req, res, orgId, ['OWNER', 'MANAGER']))) return;
 
     const body = updateMemberSchema.parse(req.body);
     const updated = await updateMember({
@@ -222,6 +227,7 @@ router.patch('/:id/group', async (req: Request, res: Response) => {
   try {
     const orgId = await requireCurrentOrgId(req, res);
     if (!orgId) return;
+    if (!(await requireOrgRole(req, res, orgId, ['OWNER', 'MANAGER']))) return;
 
     const body = moveMemberGroupSchema.parse(req.body);
     const member = await moveMemberToGroup({
@@ -256,6 +262,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const orgId = await requireCurrentOrgId(req, res);
     if (!orgId) return;
+    if (!(await requireOrgRole(req, res, orgId, ['OWNER', 'MANAGER']))) return;
 
     await deleteMember({
       organizationId: orgId,

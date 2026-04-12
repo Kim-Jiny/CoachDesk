@@ -7,7 +7,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ─── Organization ──────────────────────────────────────────
+// ─── Organization (센터) ───────────────────────────────────
 model Organization {
   id                 String            @id @default(uuid())
   name               String
@@ -21,6 +21,10 @@ model Organization {
   inviteCode         String            @unique
   bookingMode        BookingMode       @default(PRIVATE)
   reservationPolicy  ReservationPolicy @default(AUTO_CONFIRM)
+  planType           PlanType          @default(FREE)
+  maxAdminCount      Int               @default(2)
+  maxMemberCount     Int               @default(30)
+  planExpiresAt      DateTime?
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
 
@@ -34,6 +38,7 @@ model Organization {
   sessions    Session[]
   notifications Notification[]
   chatRooms     ChatRoom[]
+  centerJoinRequests CenterJoinRequest[]
 }
 
 enum BookingMode {
@@ -68,6 +73,7 @@ model User {
   sessions      Session[]        @relation("coachSessions")
   notifications Notification[]
   chatRooms     ChatRoom[]
+  centerJoinRequests CenterJoinRequest[]
 }
 
 // ─── OrgMembership (User ↔ Org) ───────────────────────────
@@ -77,7 +83,7 @@ model OrgMembership {
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  role           OrgRole  @default(COACH)
+  role           OrgRole  @default(STAFF)
   createdAt      DateTime @default(now())
 
   @@unique([userId, organizationId])
@@ -85,8 +91,40 @@ model OrgMembership {
 
 enum OrgRole {
   OWNER
-  ADMIN
-  COACH
+  MANAGER
+  STAFF
+  VIEWER
+}
+
+// ─── CenterJoinRequest (센터 합류 신청) ────────────────────
+model CenterJoinRequest {
+  id             String            @id @default(uuid())
+  userId         String
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  status         JoinRequestStatus @default(PENDING)
+  message        String?
+  reviewedBy     String?
+  reviewedAt     DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@unique([userId, organizationId, status])
+  @@index([organizationId, status])
+}
+
+enum JoinRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum PlanType {
+  FREE
+  BASIC
+  PRO
+  ENTERPRISE
 }
 
 model MemberGroup {

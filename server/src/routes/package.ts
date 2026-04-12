@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { authMiddleware } from '../middleware/auth';
-import { requireCurrentOrgId, respondValidationError } from './_shared';
+import { requireCurrentOrgId, requireOrgRole, respondValidationError } from './_shared';
 import {
   approvePauseRequest,
   assignPackageToMember,
@@ -44,6 +44,7 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     const orgId = await requireCurrentOrgId(req, res);
     if (!orgId) return;
+    if (!(await requireOrgRole(req, res, orgId, ['OWNER', 'MANAGER']))) return;
 
     const body = createPackageSchema.parse(req.body);
     const pkg = await createPackage({
@@ -69,6 +70,7 @@ router.put('/:id', async (req: Request, res: Response) => {
   try {
     const orgId = await requireCurrentOrgId(req, res);
     if (!orgId) return;
+    if (!(await requireOrgRole(req, res, orgId, ['OWNER', 'MANAGER']))) return;
 
     const body = updatePackageSchema.parse(req.body);
     const pkg = await updatePackage({
@@ -100,6 +102,7 @@ router.post('/assign', async (req: Request, res: Response) => {
   try {
     const orgId = await requireCurrentOrgId(req, res);
     if (!orgId) return;
+    if (!(await requireOrgRole(req, res, orgId, ['OWNER', 'MANAGER']))) return;
 
     const body = assignPackageSchema.parse(req.body);
     const memberPackage = await assignPackageToMember({
@@ -133,6 +136,7 @@ router.post('/member-packages/:id/pause/approve', async (req: Request, res: Resp
   try {
     const orgId = await requireCurrentOrgId(req, res);
     if (!orgId) return;
+    if (!(await requireOrgRole(req, res, orgId, ['OWNER', 'MANAGER']))) return;
 
     pauseDecisionSchema.parse(req.body ?? {});
     const { memberPackage, extensionDays } = await approvePauseRequest({
@@ -166,6 +170,7 @@ router.post('/member-packages/:id/pause/reject', async (req: Request, res: Respo
   try {
     const orgId = await requireCurrentOrgId(req, res);
     if (!orgId) return;
+    if (!(await requireOrgRole(req, res, orgId, ['OWNER', 'MANAGER']))) return;
 
     const body = pauseDecisionSchema.parse(req.body ?? {});
     await rejectPauseRequest({

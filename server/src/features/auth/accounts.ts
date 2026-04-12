@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { prisma } from '../../utils/prisma';
-import { toMemberAccountPayload, toMemberLinks, toOrganizationPayload, toUserPayload } from './payloads';
+import { toMemberAccountPayload, toMemberLinks, toOrganizationsPayload, toUserPayload } from './payloads';
 
 export class AuthFlowError extends Error {
   constructor(
@@ -21,7 +21,6 @@ export async function registerUserAccount(params: {
   password: string;
   name: string;
   phone?: string;
-  organizationName?: string;
   generateAccessToken: (payload: { userId: string; email: string }) => string;
   generateRefreshToken: (payload: { userId: string; email: string }) => string;
 }) {
@@ -31,46 +30,22 @@ export async function registerUserAccount(params: {
   }
 
   const hashedPassword = await bcrypt.hash(params.password, 12);
-  const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
 
-  const result = await prisma.$transaction(async (tx) => {
-    const user = await tx.user.create({
-      data: {
-        email: params.email,
-        password: hashedPassword,
-        name: params.name,
-        phone: params.phone,
-      },
-    });
-
-    const org = await tx.organization.create({
-      data: {
-        name: params.organizationName || `${params.name}'s Studio`,
-        inviteCode,
-      },
-    });
-
-    await tx.orgMembership.create({
-      data: {
-        userId: user.id,
-        organizationId: org.id,
-        role: 'OWNER',
-      },
-    });
-
-    return { user, org };
+  const user = await prisma.user.create({
+    data: {
+      email: params.email,
+      password: hashedPassword,
+      name: params.name,
+      phone: params.phone,
+    },
   });
 
-  const tokenPayload = { userId: result.user.id, email: result.user.email };
+  const tokenPayload = { userId: user.id, email: user.email };
   return {
     accessToken: params.generateAccessToken(tokenPayload),
     refreshToken: params.generateRefreshToken(tokenPayload),
-    user: toUserPayload(result.user),
-    organization: {
-      id: result.org.id,
-      name: result.org.name,
-      inviteCode: result.org.inviteCode,
-    },
+    user: toUserPayload(user),
+    organizations: [],
   };
 }
 
@@ -99,7 +74,7 @@ export async function loginUserAccount(params: {
     accessToken: params.generateAccessToken(tokenPayload),
     refreshToken: params.generateRefreshToken(tokenPayload),
     user: toUserPayload(user),
-    organization: toOrganizationPayload(user),
+    organizations: toOrganizationsPayload(user),
   };
 }
 
@@ -153,7 +128,7 @@ export async function getUserProfile(userId: string) {
 
   return {
     user: toUserPayload(user),
-    organization: toOrganizationPayload(user),
+    organizations: toOrganizationsPayload(user),
   };
 }
 
@@ -186,7 +161,7 @@ export async function deleteUserAccount(userId: string) {
   }
 
   const adminMemberships = user.memberships.filter(
-    (membership) => membership.role === 'OWNER' || membership.role === 'ADMIN',
+    (membership) => membership.role === 'OWNER' || membership.role === 'MANAGER',
   );
 
   for (const membership of adminMemberships) {
@@ -194,7 +169,7 @@ export async function deleteUserAccount(userId: string) {
       where: {
         organizationId: membership.organizationId,
         userId: { not: userId },
-        role: { in: ['OWNER', 'ADMIN'] },
+        role: { in: ['OWNER', 'MANAGER'] },
       },
     });
 

@@ -18,32 +18,23 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _orgNameController = TextEditingController();
 
   @override
   void dispose() {
     _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
-    _orgNameController.dispose();
     super.dispose();
   }
 
   Future<void> _register() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final success = await ref.read(authProvider.notifier).register(
+    await ref.read(authProvider.notifier).register(
       email: _emailController.text.trim(),
       password: _passwordController.text,
       name: _nameController.text.trim(),
-      organizationName: _orgNameController.text.trim().isEmpty
-          ? null
-          : _orgNameController.text.trim(),
     );
-
-    if (success && mounted) {
-      context.go('/home');
-    }
   }
 
   @override
@@ -155,15 +146,6 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                           obscureText: true,
                           validator: (v) => (v == null || v.length < 6) ? '6자 이상 입력하세요' : null,
                         ),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          controller: _orgNameController,
-                          decoration: const InputDecoration(
-                            labelText: '스튜디오 이름 (선택)',
-                            prefixIcon: Icon(Icons.business_outlined),
-                            hintText: '미입력 시 자동 생성',
-                          ),
-                        ),
                         if (authState.error != null) ...[
                           const SizedBox(height: 16),
                           Container(
@@ -217,14 +199,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
             SocialLoginButtons(
               isLoading: authState.isLoading,
               onSocialLogin: (provider, idToken, name) async {
-                final success = await ref.read(authProvider.notifier).socialLogin(
+                await ref.read(authProvider.notifier).socialLogin(
                   provider: provider,
                   idToken: idToken,
                   name: name,
                 );
-                if (success && context.mounted) {
-                  context.go('/home');
-                }
               },
             ),
             const SizedBox(height: 24),

@@ -60,7 +60,7 @@ class _MemberDetailScreenState extends ConsumerState<MemberDetailScreen> {
 
     final auth = ref.read(authProvider);
     final coachId = auth.user?.id;
-    final orgId = auth.organization?.id;
+    final orgId = auth.selectedCenter?.id;
     if (coachId == null || orgId == null) return;
 
     final messenger = ScaffoldMessenger.of(context);

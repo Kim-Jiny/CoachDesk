@@ -35,6 +35,10 @@ import '../screens/settings/team_management_screen.dart';
 import '../screens/settings/notification_settings_screen.dart';
 import '../screens/chat/chat_room_list_screen.dart';
 import '../screens/chat/chat_screen.dart';
+import '../screens/center/center_onboarding_screen.dart';
+import '../screens/center/center_create_screen.dart';
+import '../screens/center/center_join_screen.dart';
+import '../screens/center/center_list_screen.dart';
 import '../models/package.dart';
 import '../models/reservation.dart';
 
@@ -56,6 +60,13 @@ const _authPaths = {
   '/member/register',
 };
 
+const _centerPaths = {
+  '/onboarding',
+  '/centers',
+  '/centers/create',
+  '/centers/join',
+};
+
 bool _isMemberPath(String path) =>
     path == '/member/home' || path.startsWith('/member/');
 
@@ -73,8 +84,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       final memberStatus = ref.read(memberAuthProvider).status;
       final currentPath = state.matchedLocation;
 
-      // Still initializing
-      if (adminStatus == AuthStatus.initial &&
+      // Still initializing — wait for both providers to resolve
+      if (adminStatus == AuthStatus.initial ||
           memberStatus == MemberAuthStatus.initial) {
         return currentPath == '/splash' ? null : '/splash';
       }
@@ -85,18 +96,50 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // Both authenticated — use isMemberMode flag to decide
       if (adminAuth && memberAuth) {
-        if (_authPaths.contains(currentPath) || currentPath == '/splash') {
-          return isMemberMode ? '/member/home' : '/home';
-        }
         if (isMemberMode) {
+          if (_authPaths.contains(currentPath) || currentPath == '/splash') {
+            return '/member/home';
+          }
           return _isMemberPath(currentPath) ? null : '/member/home';
+        }
+        // Admin mode: check center selection
+        final authState = ref.read(authProvider);
+        if (authState.hasNoCenters) {
+          if (_centerPaths.contains(currentPath)) return null;
+          return '/onboarding';
+        }
+        if (authState.needsCenterSelection) {
+          if (_centerPaths.contains(currentPath)) return null;
+          return '/centers';
+        }
+        if (_authPaths.contains(currentPath) ||
+            currentPath == '/splash' ||
+            _centerPaths.contains(currentPath)) {
+          return '/home';
         }
         return _isMemberPath(currentPath) ? '/home' : null;
       }
 
       // Admin authenticated (not in member mode)
       if (adminAuth && !isMemberMode) {
-        if (_authPaths.contains(currentPath) || currentPath == '/splash') {
+        final authState = ref.read(authProvider);
+
+        // No centers → onboarding
+        if (authState.hasNoCenters) {
+          if (_centerPaths.contains(currentPath)) return null;
+          return '/onboarding';
+        }
+
+        // Has centers but none selected → center list
+        if (authState.needsCenterSelection) {
+          if (_centerPaths.contains(currentPath)) return null;
+          return '/centers';
+        }
+
+        // Center selected → normal admin flow
+        if (_authPaths.contains(currentPath) ||
+            currentPath == '/splash' ||
+            _centerPaths.contains(currentPath)) {
           return '/home';
         }
         if (_isMemberPath(currentPath)) {
@@ -142,6 +185,23 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/member/register',
         builder: (context, state) => const MemberRegisterScreen(),
+      ),
+      // Center routes
+      GoRoute(
+        path: '/onboarding',
+        builder: (context, state) => const CenterOnboardingScreen(),
+      ),
+      GoRoute(
+        path: '/centers',
+        builder: (context, state) => const CenterListScreen(),
+      ),
+      GoRoute(
+        path: '/centers/create',
+        builder: (context, state) => const CenterCreateScreen(),
+      ),
+      GoRoute(
+        path: '/centers/join',
+        builder: (context, state) => const CenterJoinScreen(),
       ),
       GoRoute(
         path: '/member/home',

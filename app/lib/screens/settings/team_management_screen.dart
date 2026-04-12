@@ -42,7 +42,7 @@ class _TeamManagementScreenState extends ConsumerState<TeamManagementScreen> {
 
   bool get _canEditOrg {
     final myRole = _orgData?['myRole'] as String?;
-    return myRole == 'OWNER' || myRole == 'ADMIN';
+    return myRole == 'OWNER' || myRole == 'MANAGER';
   }
 
   Future<void> _editOrg() async {
@@ -321,9 +321,10 @@ class _TeamManagementScreenState extends ConsumerState<TeamManagementScreen> {
                   const SizedBox(height: 8),
                   ...(_orgData!['members'] as List? ?? []).map((m) {
                     final roleLabel = switch (m['role'] as String?) {
-                      'OWNER' => '소유자',
-                      'ADMIN' => '관리자',
-                      'COACH' => '코치',
+                      'OWNER' => '메인관리자',
+                      'MANAGER' => '운영관리자',
+                      'STAFF' => '스태프',
+                      'VIEWER' => '뷰어',
                       _ => m['role'] ?? '',
                     };
                     final isMe = m['id'] == authState.user?.id;

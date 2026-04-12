@@ -75,6 +75,17 @@ class HomeScreen extends ConsumerWidget {
                                 color: Colors.white,
                               ),
                             ),
+                            if (authState.selectedCenter != null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Text(
+                                  authState.selectedCenter!.name,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.white.withValues(alpha: 0.7),
+                                  ),
+                                ),
+                              ),
                             const SizedBox(height: 4),
                             Text(
                               DateFormat(

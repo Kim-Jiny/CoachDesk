@@ -28,14 +28,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final success = await ref.read(authProvider.notifier).login(
+    await ref.read(authProvider.notifier).login(
       email: _emailController.text.trim(),
       password: _passwordController.text,
     );
-
-    if (success && mounted) {
-      context.go('/home');
-    }
   }
 
   @override
@@ -187,14 +183,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             SocialLoginButtons(
               isLoading: authState.isLoading,
               onSocialLogin: (provider, idToken, name) async {
-                final success = await ref.read(authProvider.notifier).socialLogin(
+                await ref.read(authProvider.notifier).socialLogin(
                   provider: provider,
                   idToken: idToken,
                   name: name,
                 );
-                if (success && context.mounted) {
-                  context.go('/home');
-                }
               },
             ),
             const SizedBox(height: 8),

@@ -77,18 +77,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                               .map((item) => item.organizationName)
                               .join(', '),
                   )
-                else if (authState.organization != null) ...[
+                else if (authState.selectedCenter != null) ...[
                   _SettingsItem(
                     icon: Icons.business_rounded,
                     iconColor: Colors.teal,
-                    title: '스튜디오',
-                    subtitle: authState.organization!.name,
+                    title: '센터',
+                    subtitle: authState.selectedCenter!.name,
                   ),
                   _SettingsItem(
                     icon: Icons.vpn_key_rounded,
                     iconColor: AppTheme.secondaryColor,
                     title: '초대 코드',
-                    subtitle: authState.organization!.inviteCode,
+                    subtitle: authState.selectedCenter!.inviteCode,
                     trailing: IconButton(
                       icon: Icon(
                         Icons.copy_rounded,
@@ -97,7 +97,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ),
                       onPressed: () => _copyInviteCode(
                         context,
-                        authState.organization!.inviteCode,
+                        authState.selectedCenter!.inviteCode,
                       ),
                     ),
                   ),
@@ -208,10 +208,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         if (isMember) {
           final hasAdminToken = ApiClient.getAdminAccessToken() != null;
           if (hasAdminToken) {
-            final switched = await ref
-                .read(authProvider.notifier)
-                .switchFromMember();
-            if (context.mounted && switched) context.go('/home');
+            final switched =
+                await ref.read(authProvider.notifier).switchFromMember();
+            if (!switched && context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('관리자 모드로 전환할 수 없습니다'),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            }
+            // Router redirect navigates based on center state
           } else if (context.mounted) {
             context.go('/login');
           }
@@ -222,7 +229,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         final hasMemberToken = ApiClient.getMemberAccessToken() != null;
         if (hasMemberToken) {
           final switched = await memberNotifier.switchFromAdmin();
-          if (context.mounted && switched) context.go('/member/home');
+          if (!switched && context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('회원 모드로 전환할 수 없습니다'),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+          // Router redirect navigates to /member/home
         } else if (context.mounted) {
           context.go('/member/login');
         }

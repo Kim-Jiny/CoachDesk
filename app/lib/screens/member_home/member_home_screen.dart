@@ -401,15 +401,21 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
                               final switched = await ref
                                   .read(authProvider.notifier)
                                   .switchFromMember();
-                              if (!context.mounted) return;
-                              if (switched) context.go('/home');
+                              if (!switched && context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('관리자 모드로 전환할 수 없습니다'),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              }
+                              // Router redirect navigates based on center state
                             } else {
-                              final result = await showDialog<bool>(
+                              await showDialog<bool>(
                                 context: context,
                                 builder: (_) => const AdminRegisterDialog(),
                               );
-                              if (!context.mounted) return;
-                              if (result == true) context.go('/home');
+                              // Router redirect navigates based on center state
                             }
                           } else if (value == 'logout') {
                             await ref

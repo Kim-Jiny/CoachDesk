@@ -345,11 +345,13 @@ class MemberAuthNotifier extends Notifier<MemberAuthState> {
     }
   }
 
-  Future<List<MemberSlot>> fetchSlots(String orgId, String date) async {
+  Future<List<MemberSlot>> fetchSlots(String orgId, String date, {String? coachId}) async {
     try {
+      final params = <String, dynamic>{'date': date};
+      if (coachId != null) params['coachId'] = coachId;
       final response = await _dio.get(
         '/auth/member/studios/$orgId/slots',
-        queryParameters: {'date': date},
+        queryParameters: params,
       );
       return (response.data as List)
           .map((json) => MemberSlot.fromJson(json as Map<String, dynamic>))

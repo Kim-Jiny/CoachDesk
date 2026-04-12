@@ -16,7 +16,7 @@ import {
 import { serializeReservation } from '../features/reservation/serializer';
 import { emitReservationCreated, emitReservationUpdated, emitReservationCancelled } from '../socket/emitters';
 import { shouldSendPushForType } from '../utils/notification-preferences';
-import { requireCurrentOrgId, respondValidationError } from './_shared';
+import { requireCurrentOrgId, requireOrgRole, respondValidationError } from './_shared';
 
 const router = Router();
 router.use(authMiddleware);
@@ -105,6 +105,7 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     const orgId = await requireCurrentOrgId(req, res);
     if (!orgId) return;
+    if (!(await requireOrgRole(req, res, orgId, ['OWNER', 'MANAGER', 'STAFF']))) return;
 
     const body = createReservationSchema.parse(req.body);
     const { reservation, memberAccountId } = await createAdminReservation({
@@ -190,6 +191,7 @@ router.patch('/:id/status', async (req: Request, res: Response) => {
   try {
     const orgId = await requireCurrentOrgId(req, res);
     if (!orgId) return;
+    if (!(await requireOrgRole(req, res, orgId, ['OWNER', 'MANAGER', 'STAFF']))) return;
 
     const { status } = req.body;
     const validStatuses = ['PENDING', 'CONFIRMED', 'CANCELLED', 'NO_SHOW'] as const;
@@ -297,6 +299,7 @@ router.patch('/:id/memo', async (req: Request, res: Response) => {
   try {
     const orgId = await requireCurrentOrgId(req, res);
     if (!orgId) return;
+    if (!(await requireOrgRole(req, res, orgId, ['OWNER', 'MANAGER', 'STAFF']))) return;
 
     const body = updateReservationMemoSchema.parse(req.body);
     const { existingReservation, reservation } = await updateReservationMemo({
@@ -326,6 +329,7 @@ router.patch('/:id/delay', async (req: Request, res: Response) => {
   try {
     const orgId = await requireCurrentOrgId(req, res);
     if (!orgId) return;
+    if (!(await requireOrgRole(req, res, orgId, ['OWNER', 'MANAGER', 'STAFF']))) return;
 
     const body = delayReservationSchema.parse(req.body);
     const { existingReservation, reservation, dateStr, newStartTime } =
@@ -409,6 +413,7 @@ router.post('/:id/complete', async (req: Request, res: Response) => {
   try {
     const orgId = await requireCurrentOrgId(req, res);
     if (!orgId) return;
+    if (!(await requireOrgRole(req, res, orgId, ['OWNER', 'MANAGER', 'STAFF']))) return;
 
     const body = completeSchema.parse(req.body);
     const result = await completeReservation({
@@ -438,6 +443,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
   try {
     const orgId = await requireCurrentOrgId(req, res);
     if (!orgId) return;
+    if (!(await requireOrgRole(req, res, orgId, ['OWNER', 'MANAGER', 'STAFF']))) return;
 
     const { reservation } = await deleteReservation({
       organizationId: orgId,

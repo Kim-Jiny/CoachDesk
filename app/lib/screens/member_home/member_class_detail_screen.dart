@@ -47,6 +47,7 @@ class _MemberClassDetailScreenState
   bool _isLoadingReservations = false;
   bool _isLoadingNotice = false;
   AppLifecycleListener? _lifecycleListener;
+  String? _selectedCoachId;
 
   @override
   void initState() {
@@ -100,13 +101,55 @@ class _MemberClassDetailScreenState
     final dateStr = DateFormat('yyyy-MM-dd').format(_selectedDate);
     final slots = await ref
         .read(memberAuthProvider.notifier)
-        .fetchSlots(widget.orgId, dateStr);
+        .fetchSlots(widget.orgId, dateStr, coachId: _selectedCoachId);
     if (mounted) {
       setState(() {
         _slots = slots;
         _isLoadingSlots = false;
       });
     }
+  }
+
+  Widget _buildCoachFilter() {
+    final memberState = ref.watch(memberAuthProvider);
+    final classData = memberState.classes
+        .where((c) => c.organizationId == widget.orgId)
+        .firstOrNull;
+    if (classData == null || classData.coaches.length <= 1) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            FilterChip(
+              label: const Text('전체'),
+              selected: _selectedCoachId == null,
+              onSelected: (_) {
+                setState(() => _selectedCoachId = null);
+                _loadSlots();
+              },
+            ),
+            const SizedBox(width: 8),
+            ...classData.coaches.map((coach) => Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: FilterChip(
+                label: Text(coach.name),
+                selected: _selectedCoachId == coach.id,
+                onSelected: (_) {
+                  setState(() => _selectedCoachId =
+                      _selectedCoachId == coach.id ? null : coach.id);
+                  _loadSlots();
+                },
+              ),
+            )),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _loadReservations() async {
@@ -500,6 +543,11 @@ class _MemberClassDetailScreenState
                 ],
               ),
             ),
+          ),
+
+          // Coach filter
+          SliverToBoxAdapter(
+            child: _buildCoachFilter(),
           ),
 
           // Slots list

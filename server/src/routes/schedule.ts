@@ -7,7 +7,7 @@ import { formatDateOnly, parseDateOnly } from '../utils/kst-date';
 import { findSchedulesCompat, findScheduleOverridesCompat } from '../utils/schedule-access';
 import { timeToMinutes } from '../utils/slot-blocking';
 import { getAvailableSlots } from '../utils/slot-service';
-import { requireCurrentOrgId, respondValidationError } from './_shared';
+import { requireCurrentOrgId, requireOrgRole, respondValidationError } from './_shared';
 
 const router = Router();
 router.use(authMiddleware);
@@ -48,6 +48,7 @@ router.post('/', async (req: Request, res: Response) => {
   try {
     const orgId = await requireCurrentOrgId(req, res);
     if (!orgId) return;
+    if (!(await requireOrgRole(req, res, orgId, ['OWNER', 'MANAGER', 'STAFF']))) return;
 
     const body = createScheduleSchema.parse(req.body);
     const dayOfWeeks = body.dayOfWeeks ?? (body.dayOfWeek != null ? [body.dayOfWeek] : []);
@@ -107,10 +108,19 @@ const updateScheduleSchema = z.object({
 // ─── Update Schedule ───────────────────────────────────────
 router.put('/:id', async (req: Request, res: Response) => {
   try {
+    const orgId = await requireCurrentOrgId(req, res);
+    if (!orgId) return;
+    const role = await requireOrgRole(req, res, orgId, ['OWNER', 'MANAGER', 'STAFF']);
+    if (!role) return;
+
     const id = req.params.id as string;
     const schedule = await prisma.schedule.findUnique({ where: { id } });
-    if (!schedule || schedule.coachId !== req.user!.userId) {
+    if (!schedule || schedule.organizationId !== orgId) {
       res.status(404).json({ error: 'Schedule not found' });
+      return;
+    }
+    if (role === 'STAFF' && schedule.coachId !== req.user!.userId) {
+      res.status(403).json({ error: 'Insufficient permissions' });
       return;
     }
 
@@ -140,10 +150,19 @@ router.put('/:id', async (req: Request, res: Response) => {
 // ─── Delete Schedule ───────────────────────────────────────
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
+    const orgId = await requireCurrentOrgId(req, res);
+    if (!orgId) return;
+    const role = await requireOrgRole(req, res, orgId, ['OWNER', 'MANAGER', 'STAFF']);
+    if (!role) return;
+
     const id = req.params.id as string;
     const schedule = await prisma.schedule.findUnique({ where: { id } });
-    if (!schedule || schedule.coachId !== req.user!.userId) {
+    if (!schedule || schedule.organizationId !== orgId) {
       res.status(404).json({ error: 'Schedule not found' });
+      return;
+    }
+    if (role === 'STAFF' && schedule.coachId !== req.user!.userId) {
+      res.status(403).json({ error: 'Insufficient permissions' });
       return;
     }
 
@@ -173,9 +192,16 @@ router.post('/overrides', async (req: Request, res: Response) => {
   try {
     const orgId = await requireCurrentOrgId(req, res);
     if (!orgId) return;
+    const role = await requireOrgRole(req, res, orgId, ['OWNER', 'MANAGER', 'STAFF']);
+    if (!role) return;
 
     const body = createOverrideSchema.parse(req.body);
     const coachId = body.coachId || req.user!.userId;
+
+    if (role === 'STAFF' && coachId !== req.user!.userId) {
+      res.status(403).json({ error: 'Insufficient permissions' });
+      return;
+    }
 
     const coachInOrg = await isUserInOrganization(coachId, orgId);
     if (!coachInOrg) {
@@ -256,6 +282,8 @@ router.delete('/overrides/:id', async (req: Request, res: Response) => {
   try {
     const orgId = await requireCurrentOrgId(req, res);
     if (!orgId) return;
+    const role = await requireOrgRole(req, res, orgId, ['OWNER', 'MANAGER', 'STAFF']);
+    if (!role) return;
 
     const id = req.params.id as string;
     const override = await prisma.scheduleOverride.findUnique({ where: { id } });

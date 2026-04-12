@@ -1,5 +1,3 @@
-import { pickPrimaryMembership } from '../../utils/org-access';
-
 type MembershipUser = {
   memberships: Array<{
     role: string;
@@ -8,16 +6,13 @@ type MembershipUser = {
   }>;
 };
 
-export function toOrganizationPayload(user: MembershipUser) {
-  const primaryMembership = pickPrimaryMembership(user.memberships);
-  if (!primaryMembership) return null;
-
-  return {
-    id: primaryMembership.organization.id,
-    name: primaryMembership.organization.name,
-    inviteCode: primaryMembership.organization.inviteCode,
-    role: primaryMembership.role,
-  };
+export function toOrganizationsPayload(user: MembershipUser) {
+  return user.memberships.map((m) => ({
+    id: m.organization.id,
+    name: m.organization.name,
+    inviteCode: m.organization.inviteCode,
+    role: m.role,
+  }));
 }
 
 export function toUserPayload(user: {

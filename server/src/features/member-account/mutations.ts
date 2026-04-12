@@ -5,7 +5,8 @@ import {
   findMemberPackageCompat,
   updateMemberPackagePauseCompat,
 } from '../../utils/member-package-access';
-import { toOrganizationPayload, toUserPayload } from '../auth/payloads';
+import { checkMemberLimit } from '../../utils/plan-limits';
+import { toOrganizationsPayload, toUserPayload } from '../auth/payloads';
 
 function calculatePauseDays(startDate: string, endDate: string) {
   const start = new Date(`${startDate}T00:00:00+09:00`);
@@ -19,6 +20,7 @@ export class MemberAccountMutationError extends Error {
     public readonly code:
       | 'MEMBER_ACCOUNT_NOT_FOUND'
       | 'INVALID_INVITE_CODE'
+      | 'MEMBER_LIMIT_REACHED'
       | 'PACKAGE_NOT_FOUND'
       | 'INVALID_PAUSE_RANGE'
       | 'PAUSE_START_IN_PAST'
@@ -68,6 +70,11 @@ export async function joinStudio(params: {
       };
     }
 
+    const withinLimit = await checkMemberLimit(org.id);
+    if (!withinLimit) {
+      throw new MemberAccountMutationError('MEMBER_LIMIT_REACHED');
+    }
+
     const reactivatedMember = await prisma.member.update({
       where: { id: existing.id },
       data: {
@@ -89,6 +96,11 @@ export async function joinStudio(params: {
         name: org.name,
       },
     };
+  }
+
+  const withinLimit = await checkMemberLimit(org.id);
+  if (!withinLimit) {
+    throw new MemberAccountMutationError('MEMBER_LIMIT_REACHED');
   }
 
   const member = await prisma.member.create({
@@ -161,7 +173,7 @@ export async function requestPackagePause(params: {
   const adminUsers = await prisma.orgMembership.findMany({
     where: {
       organizationId: memberPackage.member?.organizationId,
-      role: { in: ['OWNER', 'ADMIN'] },
+      role: { in: ['OWNER', 'MANAGER'] },
       user: { fcmToken: { not: null } },
     },
     select: {
@@ -189,7 +201,6 @@ export async function requestPackagePause(params: {
 
 export async function upgradeToAdmin(params: {
   memberAccountId: string;
-  organizationName: string;
   generateAccessToken: (payload: { userId: string; email: string }) => string;
   generateRefreshToken: (payload: { userId: string; email: string }) => string;
 }) {
@@ -216,42 +227,25 @@ export async function upgradeToAdmin(params: {
       accessToken: params.generateAccessToken(tokenPayload),
       refreshToken: params.generateRefreshToken(tokenPayload),
       user: toUserPayload(user),
-      organization: toOrganizationPayload(user),
+      organizations: toOrganizationsPayload(user),
     };
   }
 
-  const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-  const result = await prisma.$transaction(async (tx) => {
-    const newUser = await tx.user.create({
-      data: {
-        email: account.email,
-        password: account.password,
-        name: account.name,
-        googleId: (account as any).googleId || undefined,
-        appleId: (account as any).appleId || undefined,
-      },
-    });
-
-    const org = await tx.organization.create({
-      data: { name: params.organizationName, inviteCode },
-    });
-
-    await tx.orgMembership.create({
-      data: { userId: newUser.id, organizationId: org.id, role: 'OWNER' },
-    });
-
-    return { user: newUser, org };
+  const newUser = await prisma.user.create({
+    data: {
+      email: account.email,
+      password: account.password,
+      name: account.name,
+      googleId: (account as any).googleId || undefined,
+      appleId: (account as any).appleId || undefined,
+    },
   });
 
-  const tokenPayload = { userId: result.user.id, email: result.user.email };
+  const tokenPayload = { userId: newUser.id, email: newUser.email };
   return {
     accessToken: params.generateAccessToken(tokenPayload),
     refreshToken: params.generateRefreshToken(tokenPayload),
-    user: toUserPayload(result.user),
-    organization: {
-      id: result.org.id,
-      name: result.org.name,
-      inviteCode: result.org.inviteCode,
-    },
+    user: toUserPayload(newUser),
+    organizations: [],
   };
 }

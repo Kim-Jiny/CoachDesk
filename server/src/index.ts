@@ -17,6 +17,7 @@ import sessionRoutes from './routes/session';
 import reportRoutes from './routes/report';
 import notificationRoutes from './routes/notification';
 import chatRoutes from './routes/chat';
+import centerRoutes from './routes/center';
 
 const app = express();
 
@@ -41,6 +42,7 @@ app.use('/api/sessions', sessionRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/centers', centerRoutes);
 
 // Start server
 const httpServer = createServer(app);

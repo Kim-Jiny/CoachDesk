@@ -16,29 +16,39 @@ enum AuthStatus { initial, authenticated, unauthenticated }
 class AuthState {
   final AuthStatus status;
   final User? user;
-  final Organization? organization;
+  final List<Organization> centers;
+  final Organization? selectedCenter;
   final bool isLoading;
   final String? error;
 
   const AuthState({
     this.status = AuthStatus.initial,
     this.user,
-    this.organization,
+    this.centers = const [],
+    this.selectedCenter,
     this.isLoading = false,
     this.error,
   });
 
+  bool get hasNoCenters => centers.isEmpty;
+  bool get needsCenterSelection =>
+      status == AuthStatus.authenticated && selectedCenter == null;
+
   AuthState copyWith({
     AuthStatus? status,
     User? user,
-    Organization? organization,
+    List<Organization>? centers,
+    Organization? selectedCenter,
+    bool clearSelectedCenter = false,
     bool? isLoading,
     String? error,
   }) {
     return AuthState(
       status: status ?? this.status,
       user: user ?? this.user,
-      organization: organization ?? this.organization,
+      centers: centers ?? this.centers,
+      selectedCenter:
+          clearSelectedCenter ? null : (selectedCenter ?? this.selectedCenter),
       isLoading: isLoading ?? this.isLoading,
       error: error,
     );
@@ -59,6 +69,36 @@ class AuthNotifier extends Notifier<AuthState> {
     state = state.copyWith(status: AuthStatus.unauthenticated);
   }
 
+  List<Organization> _parseOrganizations(dynamic data) {
+    if (data == null) return [];
+    if (data is List) {
+      return data
+          .map((e) => Organization.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    // Backward compatibility: single organization object
+    if (data is Map<String, dynamic>) {
+      return [Organization.fromJson(data)];
+    }
+    return [];
+  }
+
+  Organization? _autoSelectCenter(List<Organization> centers) {
+    if (centers.isEmpty) return null;
+
+    // Try to restore previously selected center
+    final savedOrgId = ApiClient.getOrgId();
+    if (savedOrgId != null) {
+      final saved = centers.where((c) => c.id == savedOrgId).firstOrNull;
+      if (saved != null) return saved;
+    }
+
+    // Auto-select if only one center
+    if (centers.length == 1) return centers.first;
+
+    return null;
+  }
+
   Future<void> checkAuth() async {
     final token = ApiClient.getAccessToken();
     if (token == null) {
@@ -69,17 +109,17 @@ class AuthNotifier extends Notifier<AuthState> {
     try {
       final response = await _dio.get('/auth/profile');
       final user = User.fromJson(response.data['user']);
-      final org = response.data['organization'] != null
-          ? Organization.fromJson(response.data['organization'])
-          : null;
+      final centers = _parseOrganizations(response.data['organizations']);
+      final selected = _autoSelectCenter(centers);
 
       await ApiClient.saveUserId(user.id);
-      if (org != null) await ApiClient.saveOrgId(org.id);
+      if (selected != null) await ApiClient.saveOrgId(selected.id);
 
       state = state.copyWith(
         status: AuthStatus.authenticated,
         user: user,
-        organization: org,
+        centers: centers,
+        selectedCenter: selected,
       );
       try {
         await FcmService.syncNotificationPreferences(isMember: false);
@@ -97,7 +137,6 @@ class AuthNotifier extends Notifier<AuthState> {
     required String password,
     required String name,
     String? phone,
-    String? organizationName,
   }) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
@@ -108,7 +147,6 @@ class AuthNotifier extends Notifier<AuthState> {
           'password': password,
           'name': name,
           'phone': phone,
-          'organizationName': organizationName,
         },
       );
 
@@ -121,14 +159,14 @@ class AuthNotifier extends Notifier<AuthState> {
       );
 
       final user = User.fromJson(response.data['user']);
-      final org = Organization.fromJson(response.data['organization']);
+      final centers = _parseOrganizations(response.data['organizations']);
       await ApiClient.saveUserId(user.id);
-      await ApiClient.saveOrgId(org.id);
 
       state = state.copyWith(
         status: AuthStatus.authenticated,
         user: user,
-        organization: org,
+        centers: centers,
+        clearSelectedCenter: true,
         isLoading: false,
       );
 
@@ -160,16 +198,17 @@ class AuthNotifier extends Notifier<AuthState> {
       );
 
       final user = User.fromJson(response.data['user']);
-      final org = response.data['organization'] != null
-          ? Organization.fromJson(response.data['organization'])
-          : null;
+      final centers = _parseOrganizations(response.data['organizations']);
+      final selected = _autoSelectCenter(centers);
+
       await ApiClient.saveUserId(user.id);
-      if (org != null) await ApiClient.saveOrgId(org.id);
+      if (selected != null) await ApiClient.saveOrgId(selected.id);
 
       state = state.copyWith(
         status: AuthStatus.authenticated,
         user: user,
-        organization: org,
+        centers: centers,
+        selectedCenter: selected,
         isLoading: false,
       );
 
@@ -209,16 +248,17 @@ class AuthNotifier extends Notifier<AuthState> {
       );
 
       final user = User.fromJson(response.data['user']);
-      final org = response.data['organization'] != null
-          ? Organization.fromJson(response.data['organization'])
-          : null;
+      final centers = _parseOrganizations(response.data['organizations']);
+      final selected = _autoSelectCenter(centers);
+
       await ApiClient.saveUserId(user.id);
-      if (org != null) await ApiClient.saveOrgId(org.id);
+      if (selected != null) await ApiClient.saveOrgId(selected.id);
 
       state = state.copyWith(
         status: AuthStatus.authenticated,
         user: user,
-        organization: org,
+        centers: centers,
+        selectedCenter: selected,
         isLoading: false,
       );
 
@@ -235,15 +275,12 @@ class AuthNotifier extends Notifier<AuthState> {
     }
   }
 
-  /// Upgrade current member account to admin by creating User + Organization.
-  /// Called from AdminRegisterDialog with just a studio name.
-  Future<bool> upgradeFromMember({required String organizationName}) async {
+  /// Upgrade current member account to admin by creating User account.
+  /// Center creation/joining is a separate step via onboarding.
+  Future<bool> upgradeFromMember() async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      final response = await _dio.post(
-        '/auth/member/upgrade-to-admin',
-        data: {'organizationName': organizationName},
-      );
+      final response = await _dio.post('/auth/member/upgrade-to-admin');
 
       final box = Hive.box(AppConstants.authBox);
       await box.put(AppConstants.isMemberAccountKey, false);
@@ -254,16 +291,17 @@ class AuthNotifier extends Notifier<AuthState> {
       );
 
       final user = User.fromJson(response.data['user']);
-      final org = response.data['organization'] != null
-          ? Organization.fromJson(response.data['organization'])
-          : null;
+      final centers = _parseOrganizations(response.data['organizations']);
+      final selected = _autoSelectCenter(centers);
+
       await ApiClient.saveUserId(user.id);
-      if (org != null) await ApiClient.saveOrgId(org.id);
+      if (selected != null) await ApiClient.saveOrgId(selected.id);
 
       state = state.copyWith(
         status: AuthStatus.authenticated,
         user: user,
-        organization: org,
+        centers: centers,
+        selectedCenter: selected,
         isLoading: false,
       );
 
@@ -274,6 +312,98 @@ class AuthNotifier extends Notifier<AuthState> {
       final msg = e.response?.data?['error'] as String? ?? '관리자 전환에 실패했습니다';
       state = state.copyWith(isLoading: false, error: msg);
       return false;
+    }
+  }
+
+  // ─── Center Management ────────────────────────────────────
+
+  Future<void> selectCenter(String organizationId) async {
+    final center = state.centers.where((c) => c.id == organizationId).firstOrNull;
+    if (center == null) return;
+
+    await ApiClient.saveOrgId(center.id);
+    state = state.copyWith(selectedCenter: center);
+    _syncWidgets();
+  }
+
+  Future<bool> createCenter({
+    required String name,
+    String? description,
+  }) async {
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      final response = await _dio.post('/centers', data: {
+        'name': name,
+        if (description != null) 'description': description,
+      });
+
+      final newCenter = Organization.fromJson(response.data);
+      final updatedCenters = [...state.centers, newCenter];
+
+      await ApiClient.saveOrgId(newCenter.id);
+      state = state.copyWith(
+        centers: updatedCenters,
+        selectedCenter: newCenter,
+        isLoading: false,
+      );
+      _syncWidgets();
+      return true;
+    } on DioException catch (e) {
+      final msg = e.response?.data?['error'] as String? ?? '센터 생성에 실패했습니다';
+      state = state.copyWith(isLoading: false, error: msg);
+      return false;
+    }
+  }
+
+  Future<CenterJoinRequest?> requestJoinCenter(String inviteCode, {String? message}) async {
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      final response = await _dio.post('/centers/join-request', data: {
+        'inviteCode': inviteCode,
+        if (message != null) 'message': message,
+      });
+
+      state = state.copyWith(isLoading: false);
+      return CenterJoinRequest.fromJson(response.data);
+    } on DioException catch (e) {
+      final msg = e.response?.data?['error'] as String? ?? '합류 신청에 실패했습니다';
+      state = state.copyWith(isLoading: false, error: msg);
+      return null;
+    }
+  }
+
+  Future<void> fetchCenters() async {
+    // Only show loading spinner when centers are not yet loaded
+    if (state.centers.isEmpty) {
+      state = state.copyWith(isLoading: true, error: null);
+    } else {
+      state = state.copyWith(error: null);
+    }
+    try {
+      final response = await _dio.get('/centers');
+      final centersData = response.data['centers'] as List? ?? [];
+      final centers = centersData
+          .map((e) => Organization.fromJson(e as Map<String, dynamic>))
+          .toList();
+
+      // Preserve existing selected center if still in the updated list
+      final currentSelectedId = state.selectedCenter?.id;
+      final selected = currentSelectedId != null
+          ? centers.where((c) => c.id == currentSelectedId).firstOrNull ??
+              _autoSelectCenter(centers)
+          : _autoSelectCenter(centers);
+      if (selected != null) await ApiClient.saveOrgId(selected.id);
+
+      state = state.copyWith(
+        centers: centers,
+        selectedCenter: selected,
+        isLoading: false,
+      );
+    } catch (_) {
+      state = state.copyWith(
+        isLoading: false,
+        error: '센터 목록을 불러오지 못했습니다',
+      );
     }
   }
 

@@ -54,7 +54,7 @@ export async function getMemberMyClasses(memberAccountId: string) {
   const memberships = await prisma.orgMembership.findMany({
     where: {
       organizationId: { in: organizationIds },
-      role: 'COACH',
+      role: { in: ['OWNER', 'MANAGER', 'STAFF'] },
     },
     select: {
       organizationId: true,
@@ -141,6 +141,7 @@ export async function getStudioSlots(params: {
   memberAccountId: string;
   organizationId: string;
   date?: string;
+  coachId?: string;
 }) {
   if (!params.date) {
     throw new MemberAccountQueryError('DATE_REQUIRED');
@@ -161,6 +162,7 @@ export async function getStudioSlots(params: {
     getAvailableSlots({
       organizationId: params.organizationId,
       date: params.date,
+      coachId: params.coachId,
       includeCoachNames: true,
     }),
     prisma.organization.findUnique({

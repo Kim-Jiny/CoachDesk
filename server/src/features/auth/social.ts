@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { prisma } from '../../utils/prisma';
 import { verifyAppleIdentityToken } from '../../utils/apple-auth';
 import { env } from '../../config/env';
-import { toMemberAccountPayload, toMemberLinks, toOrganizationPayload, toUserPayload } from './payloads';
+import { toMemberAccountPayload, toMemberLinks, toOrganizationsPayload, toUserPayload } from './payloads';
 
 export const socialLoginSchema = z.object({
   idToken: z.string().min(1),
@@ -109,27 +109,17 @@ export async function socialLoginUser(params: {
       });
     }
   } else {
-    const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const result = await prisma.$transaction(async (tx) => {
-      const newUser = await tx.user.create({
-        data: {
-          email,
-          password: await bcrypt.hash(Math.random().toString(36), 12),
-          name: displayName || email.split('@')[0],
-          [socialField]: socialId,
-        },
-      });
-      const org = await tx.organization.create({
-        data: { name: `${displayName || email.split('@')[0]}'s Studio`, inviteCode },
-      });
-      await tx.orgMembership.create({
-        data: { userId: newUser.id, organizationId: org.id, role: 'OWNER' },
-      });
-      return { user: newUser, org };
+    const newUser = await prisma.user.create({
+      data: {
+        email,
+        password: await bcrypt.hash(Math.random().toString(36), 12),
+        name: displayName || email.split('@')[0],
+        [socialField]: socialId,
+      },
     });
 
     user = (await prisma.user.findUnique({
-      where: { id: result.user.id },
+      where: { id: newUser.id },
       include: { memberships: { include: { organization: true }, orderBy: { createdAt: 'asc' } } },
     })) as any;
   }
@@ -139,7 +129,7 @@ export async function socialLoginUser(params: {
     accessToken: params.generateAccessToken(tokenPayload),
     refreshToken: params.generateRefreshToken(tokenPayload),
     user: toUserPayload(user!),
-    organization: toOrganizationPayload(user!),
+    organizations: toOrganizationsPayload(user!),
   };
 }
 
