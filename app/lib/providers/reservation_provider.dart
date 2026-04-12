@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api_client.dart';
+import '../core/home_widget_service.dart';
 import '../core/socket_service.dart';
 import '../models/reservation.dart';
 
@@ -42,6 +45,10 @@ class ReservationCreateResult {
 }
 
 class ReservationNotifier extends Notifier<ReservationState> {
+  void _syncWidgets() {
+    unawaited(HomeWidgetService.syncAll());
+  }
+
   @override
   ReservationState build() {
     _setupSocketListeners();
@@ -84,6 +91,7 @@ class ReservationNotifier extends Notifier<ReservationState> {
         return a.startTime.compareTo(b.startTime);
       });
       state = state.copyWith(reservations: reservations);
+      _syncWidgets();
     } catch (_) {}
   }
 
@@ -95,6 +103,7 @@ class ReservationNotifier extends Notifier<ReservationState> {
         return r.id == updated.id ? updated : r;
       }).toList();
       state = state.copyWith(reservations: reservations);
+      _syncWidgets();
     } catch (_) {}
   }
 
@@ -106,6 +115,7 @@ class ReservationNotifier extends Notifier<ReservationState> {
         return r.id == cancelled.id ? cancelled : r;
       }).toList();
       state = state.copyWith(reservations: reservations);
+      _syncWidgets();
     } catch (_) {}
   }
 
@@ -142,6 +152,7 @@ class ReservationNotifier extends Notifier<ReservationState> {
   ) async {
     try {
       await _dio.post('/reservations', data: data);
+      _syncWidgets();
       return const ReservationCreateResult(success: true);
     } on DioException catch (e) {
       return ReservationCreateResult(
@@ -157,6 +168,7 @@ class ReservationNotifier extends Notifier<ReservationState> {
   Future<bool> updateStatus(String id, String status) async {
     try {
       await _dio.patch('/reservations/$id/status', data: {'status': status});
+      _syncWidgets();
       return true;
     } catch (_) {
       return false;
@@ -166,6 +178,7 @@ class ReservationNotifier extends Notifier<ReservationState> {
   Future<bool> completeReservation(String id, Map<String, dynamic> data) async {
     try {
       await _dio.post('/reservations/$id/complete', data: data);
+      _syncWidgets();
       return true;
     } catch (_) {
       return false;

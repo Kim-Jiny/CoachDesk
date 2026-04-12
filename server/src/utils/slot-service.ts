@@ -2,6 +2,7 @@ import { getKstCurrentTimeMinutes, getKstDayOfWeek, isKstToday, parseDateOnly } 
 import { prisma } from './prisma';
 import { findSchedulesCompat, findScheduleOverridesCompat } from './schedule-access';
 import { isTimeRangeClosed } from './slot-blocking';
+import { isOverlappingTimeRange } from '../features/shared/time-range';
 
 type SlotResult = {
   coachId: string;
@@ -175,23 +176,6 @@ export async function findGeneratedSlot(params: {
 
 function getSlotKey(slot: SlotResult): string {
   return `${slot.coachId}|${slot.startTime}|${slot.endTime}`;
-}
-
-function isOverlappingTimeRange(
-  leftStart: string,
-  leftEnd: string,
-  rightStart: string,
-  rightEnd: string,
-) {
-  const leftStartMinutes =
-      Number(leftStart.slice(0, 2)) * 60 + Number(leftStart.slice(3, 5));
-  const leftEndMinutes =
-      Number(leftEnd.slice(0, 2)) * 60 + Number(leftEnd.slice(3, 5));
-  const rightStartMinutes =
-      Number(rightStart.slice(0, 2)) * 60 + Number(rightStart.slice(3, 5));
-  const rightEndMinutes =
-      Number(rightEnd.slice(0, 2)) * 60 + Number(rightEnd.slice(3, 5));
-  return leftStartMinutes < rightEndMinutes && leftEndMinutes > rightStartMinutes;
 }
 
 function generateSlotsFromSchedule(

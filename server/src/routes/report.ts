@@ -1,10 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../utils/prisma';
 import { authMiddleware } from '../middleware/auth';
-import { getCurrentOrgId } from '../utils/org-access';
 import { addDays, getKstMonthStart, getKstToday, parseDateOnly } from '../utils/kst-date';
 import { deriveMemberPackageStatus } from '../utils/member-package-status';
 import { listMemberPackagesCompat } from '../utils/member-package-access';
+import { requireCurrentOrgId } from './_shared';
 
 const router = Router();
 router.use(authMiddleware);
@@ -12,8 +12,8 @@ router.use(authMiddleware);
 // ─── Revenue Report ────────────────────────────────────────
 router.get('/revenue', async (req: Request, res: Response) => {
   try {
-    const orgId = await getCurrentOrgId(req.user!.userId, req.header('x-organization-id') ?? undefined);
-    if (!orgId) { res.status(403).json({ error: 'No organization' }); return; }
+    const orgId = await requireCurrentOrgId(req, res);
+    if (!orgId) return;
 
     const { startDate, endDate } = req.query;
     if (!startDate || !endDate) {
@@ -60,8 +60,8 @@ router.get('/revenue', async (req: Request, res: Response) => {
 // ─── Attendance Report ─────────────────────────────────────
 router.get('/attendance', async (req: Request, res: Response) => {
   try {
-    const orgId = await getCurrentOrgId(req.user!.userId, req.header('x-organization-id') ?? undefined);
-    if (!orgId) { res.status(403).json({ error: 'No organization' }); return; }
+    const orgId = await requireCurrentOrgId(req, res);
+    if (!orgId) return;
 
     const { startDate, endDate } = req.query;
     if (!startDate || !endDate) {
@@ -100,8 +100,8 @@ router.get('/attendance', async (req: Request, res: Response) => {
 // ─── Dashboard Stats ───────────────────────────────────────
 router.get('/dashboard', async (req: Request, res: Response) => {
   try {
-    const orgId = await getCurrentOrgId(req.user!.userId, req.header('x-organization-id') ?? undefined);
-    if (!orgId) { res.status(403).json({ error: 'No organization' }); return; }
+    const orgId = await requireCurrentOrgId(req, res);
+    if (!orgId) return;
 
     const todayDate = getKstToday();
     const today = parseDateOnly(todayDate);

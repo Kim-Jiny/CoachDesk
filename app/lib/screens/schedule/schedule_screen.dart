@@ -106,6 +106,8 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
           success
               ? status == 'CONFIRMED'
                     ? '예약이 승인되었습니다'
+                    : status == 'CANCELLED'
+                    ? '예약이 취소되었습니다'
                     : '예약 상태가 변경되었습니다'
               : '예약 상태 변경에 실패했습니다',
         ),
@@ -117,6 +119,34 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
       _loadReservations();
       _loadSlots();
     }
+  }
+
+  Future<bool> _confirmAdminCancellation(Reservation reservation) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('예약 취소'),
+        content: Text(
+          '${reservation.memberName ?? '회원'}님의 ${reservation.startTime} 예약을 취소할까요?\n회원에게 취소 알림이 전송됩니다.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('닫기'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppTheme.errorColor,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('예약 취소'),
+          ),
+        ],
+      ),
+    );
+
+    return result == true;
   }
 
   Future<void> _adjustReservationTime(Reservation reservation) async {
@@ -462,6 +492,16 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(
+                      Icons.cancel_outlined,
+                      color: AppTheme.errorColor,
+                    ),
+                    title: const Text('예약 취소'),
+                    subtitle: const Text('회원에게 취소 알림이 전송됩니다'),
+                    onTap: () => Navigator.pop(context, 'cancel'),
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(
                       Icons.edit_note_rounded,
                       color: Colors.orange,
                     ),
@@ -512,6 +552,11 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     if (action == 'approve') {
       await _changeReservationStatus(reservation, 'CONFIRMED');
     } else if (action == 'reject') {
+      await _changeReservationStatus(reservation, 'CANCELLED');
+    } else if (action == 'cancel') {
+      if (!mounted) return;
+      final confirmed = await _confirmAdminCancellation(reservation);
+      if (!confirmed) return;
       await _changeReservationStatus(reservation, 'CANCELLED');
     } else if (action == 'member') {
       if (!mounted) return;

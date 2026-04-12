@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -5,6 +7,7 @@ import 'package:intl/date_symbol_data_local.dart';
 
 import 'core/constants.dart';
 import 'core/fcm_service.dart';
+import 'core/home_widget_service.dart';
 import 'core/router.dart';
 import 'core/theme.dart';
 
@@ -22,6 +25,9 @@ void main() async {
   } catch (e) {
     debugPrint('Firebase init failed (expected without config): $e');
   }
+
+  await HomeWidgetService.initialize();
+  unawaited(HomeWidgetService.syncAll());
 
   FcmService.navigatorKey = navigatorKey;
 

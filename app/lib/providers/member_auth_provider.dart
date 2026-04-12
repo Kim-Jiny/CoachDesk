@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -5,6 +7,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../core/api_client.dart';
 import '../core/constants.dart';
 import '../core/fcm_service.dart';
+import '../core/home_widget_service.dart';
 import '../models/member_booking.dart';
 import '../models/package.dart';
 
@@ -133,6 +136,10 @@ class MemberAuthState {
 }
 
 class MemberAuthNotifier extends Notifier<MemberAuthState> {
+  void _syncWidgets() {
+    unawaited(HomeWidgetService.syncAll());
+  }
+
   @override
   MemberAuthState build() => const MemberAuthState();
 
@@ -171,11 +178,13 @@ class MemberAuthNotifier extends Notifier<MemberAuthState> {
         await FcmService.syncNotificationPreferences(isMember: true);
       } catch (_) {}
       await fetchMyClasses();
+      _syncWidgets();
     } catch (_) {
       await ApiClient.clearTokens();
       final box = Hive.box(AppConstants.authBox);
       await box.delete(AppConstants.isMemberAccountKey);
       state = state.copyWith(status: MemberAuthStatus.unauthenticated);
+      _syncWidgets();
     }
   }
 
@@ -210,6 +219,7 @@ class MemberAuthNotifier extends Notifier<MemberAuthState> {
       );
 
       FcmService.registerToken(isMember: true);
+      _syncWidgets();
       return true;
     } on DioException catch (e) {
       final msg = e.response?.data?['error'] as String? ?? '회원가입에 실패했습니다';
@@ -246,6 +256,7 @@ class MemberAuthNotifier extends Notifier<MemberAuthState> {
 
       await fetchMyClasses();
       FcmService.registerToken(isMember: true);
+      _syncWidgets();
       return true;
     } on DioException catch (e) {
       final msg = e.response?.data?['error'] as String? ?? '로그인에 실패했습니다';
@@ -291,6 +302,7 @@ class MemberAuthNotifier extends Notifier<MemberAuthState> {
 
       await fetchMyClasses();
       FcmService.registerToken(isMember: true);
+      _syncWidgets();
       return true;
     } on DioException catch (e) {
       final msg = e.response?.data?['error'] as String? ?? '소셜 로그인 실패';
@@ -308,6 +320,7 @@ class MemberAuthNotifier extends Notifier<MemberAuthState> {
       await _dio.post('/auth/member/join', data: {'inviteCode': inviteCode});
       await fetchMyClasses();
       state = state.copyWith(isLoading: false, error: null);
+      _syncWidgets();
       return true;
     } on DioException catch (e) {
       final msg = e.response?.data?['error'] as String? ?? '수업 참여에 실패했습니다';
@@ -377,6 +390,7 @@ class MemberAuthNotifier extends Notifier<MemberAuthState> {
           'endTime': endTime,
         },
       );
+      _syncWidgets();
       return response.data['status'] as String? ?? 'CONFIRMED';
     } catch (_) {
       return null;
@@ -421,6 +435,7 @@ class MemberAuthNotifier extends Notifier<MemberAuthState> {
   Future<String?> cancelReservation(String reservationId) async {
     try {
       await _dio.delete('/auth/member/reservations/$reservationId');
+      _syncWidgets();
       return null;
     } on DioException catch (e) {
       return e.response?.data?['error'] as String? ?? '취소에 실패했습니다';
@@ -452,6 +467,7 @@ class MemberAuthNotifier extends Notifier<MemberAuthState> {
     final box = Hive.box(AppConstants.authBox);
     await box.put(AppConstants.isMemberAccountKey, true);
     await checkAuth();
+    _syncWidgets();
     return state.status == MemberAuthStatus.authenticated;
   }
 
@@ -461,6 +477,24 @@ class MemberAuthNotifier extends Notifier<MemberAuthState> {
     await box.delete(AppConstants.isMemberAccountKey);
     await box.delete(AppConstants.memberNameKey);
     state = const MemberAuthState(status: MemberAuthStatus.unauthenticated);
+    _syncWidgets();
+  }
+
+  Future<String?> deleteAccount() async {
+    try {
+      await _dio.delete('/auth/member/profile');
+      await ApiClient.clearTokens();
+      final box = Hive.box(AppConstants.authBox);
+      await box.delete(AppConstants.isMemberAccountKey);
+      await box.delete(AppConstants.memberNameKey);
+      state = const MemberAuthState(status: MemberAuthStatus.unauthenticated);
+      _syncWidgets();
+      return null;
+    } on DioException catch (e) {
+      return e.response?.data?['error'] as String? ?? '회원 탈퇴에 실패했습니다';
+    } catch (_) {
+      return '회원 탈퇴에 실패했습니다';
+    }
   }
 }
 

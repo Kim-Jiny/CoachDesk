@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -5,6 +7,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../core/api_client.dart';
 import '../core/constants.dart';
 import '../core/fcm_service.dart';
+import '../core/home_widget_service.dart';
 import '../models/user.dart';
 import '../models/organization.dart';
 
@@ -43,6 +46,10 @@ class AuthState {
 }
 
 class AuthNotifier extends Notifier<AuthState> {
+  void _syncWidgets() {
+    unawaited(HomeWidgetService.syncAll());
+  }
+
   @override
   AuthState build() => const AuthState();
 
@@ -77,9 +84,11 @@ class AuthNotifier extends Notifier<AuthState> {
       try {
         await FcmService.syncNotificationPreferences(isMember: false);
       } catch (_) {}
+      _syncWidgets();
     } catch (_) {
       await ApiClient.clearTokens();
       state = state.copyWith(status: AuthStatus.unauthenticated);
+      _syncWidgets();
     }
   }
 
@@ -124,6 +133,7 @@ class AuthNotifier extends Notifier<AuthState> {
       );
 
       FcmService.registerToken(isMember: false);
+      _syncWidgets();
       return true;
     } on DioException catch (e) {
       final msg =
@@ -164,6 +174,7 @@ class AuthNotifier extends Notifier<AuthState> {
       );
 
       FcmService.registerToken(isMember: false);
+      _syncWidgets();
       return true;
     } on DioException catch (e) {
       final msg = e.response?.data?['error'] as String? ?? 'Login failed';
@@ -212,6 +223,7 @@ class AuthNotifier extends Notifier<AuthState> {
       );
 
       FcmService.registerToken(isMember: false);
+      _syncWidgets();
       return true;
     } on DioException catch (e) {
       final msg = e.response?.data?['error'] as String? ?? '소셜 로그인 실패';
@@ -256,6 +268,7 @@ class AuthNotifier extends Notifier<AuthState> {
       );
 
       FcmService.registerToken(isMember: false);
+      _syncWidgets();
       return true;
     } on DioException catch (e) {
       final msg = e.response?.data?['error'] as String? ?? '관리자 전환에 실패했습니다';
@@ -273,6 +286,7 @@ class AuthNotifier extends Notifier<AuthState> {
     final box = Hive.box(AppConstants.authBox);
     await box.put(AppConstants.isMemberAccountKey, false);
     await checkAuth();
+    _syncWidgets();
     return state.status == AuthStatus.authenticated;
   }
 
@@ -281,6 +295,23 @@ class AuthNotifier extends Notifier<AuthState> {
     final box = Hive.box(AppConstants.authBox);
     await box.delete(AppConstants.isMemberAccountKey);
     state = const AuthState(status: AuthStatus.unauthenticated);
+    _syncWidgets();
+  }
+
+  Future<String?> deleteAccount() async {
+    try {
+      await _dio.delete('/auth/profile');
+      await ApiClient.clearTokens();
+      final box = Hive.box(AppConstants.authBox);
+      await box.delete(AppConstants.isMemberAccountKey);
+      state = const AuthState(status: AuthStatus.unauthenticated);
+      _syncWidgets();
+      return null;
+    } on DioException catch (e) {
+      return e.response?.data?['error'] as String? ?? '관리자 계정 삭제에 실패했습니다';
+    } catch (_) {
+      return '관리자 계정 삭제에 실패했습니다';
+    }
   }
 }
 

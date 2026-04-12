@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart';
 class AppConstants {
   AppConstants._();
 
-  static const String _defaultDebugHost = 'https://coach.jiny.shop/api';
   static const String _defaultReleaseHost = 'https://coach.jiny.shop/api';
   static const String _configuredHost = String.fromEnvironment(
     'COACHDESK_API_BASE_URL',
@@ -11,16 +10,45 @@ class AppConstants {
   );
   static const String _configuredDebugHost = String.fromEnvironment(
     'COACHDESK_API_BASE_URL_DEBUG',
-    defaultValue: _defaultDebugHost,
+    defaultValue: '',
   );
   static const String _configuredReleaseHost = String.fromEnvironment(
     'COACHDESK_API_BASE_URL_RELEASE',
     defaultValue: _defaultReleaseHost,
   );
+  static const String _debugHost = String.fromEnvironment(
+    'COACHDESK_API_HOST',
+    defaultValue: '',
+  );
+  static const String _debugServerIp = String.fromEnvironment(
+    'DEBUG_SERVER_IP',
+    defaultValue: '',
+  );
+  static const String _debugPort = String.fromEnvironment(
+    'COACHDESK_API_PORT',
+    defaultValue: '3010',
+  );
+  static const String _debugScheme = String.fromEnvironment(
+    'COACHDESK_API_SCHEME',
+    defaultValue: 'http',
+  );
 
   static String get apiBaseUrl {
     if (_configuredHost.isNotEmpty) return _configuredHost;
-    return kDebugMode ? _configuredDebugHost : _configuredReleaseHost;
+    if (!kDebugMode) return _configuredReleaseHost;
+    if (_configuredDebugHost.isNotEmpty) return _configuredDebugHost;
+
+    final host = _debugHost.isNotEmpty
+        ? _debugHost
+        : (_debugServerIp.isNotEmpty ? _debugServerIp : _defaultDebugHost);
+    return '$_debugScheme://$host:$_debugPort/api';
+  }
+
+  static String get _defaultDebugHost {
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return '10.0.2.2';
+    }
+    return 'localhost';
   }
 
   // Hive boxes

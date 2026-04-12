@@ -418,7 +418,7 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
                             if (!context.mounted) return;
                             context.go('/auth-select');
                           } else if (value == 'notification_settings') {
-                            context.push('/member/settings/notifications');
+                            context.push('/member/settings');
                           }
                         },
                         itemBuilder: (_) => [

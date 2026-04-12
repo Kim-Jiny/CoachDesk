@@ -7,7 +7,7 @@
     "db:prepare": "npm run prisma:generate && npm run prisma:migrate",
     "dev": "npm run db:prepare && ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "npm run prisma:generate && tsc",
-    "test": "npm run build && node --test dist/tests",
+    "test": "npm run build && node --test dist/tests/*.test.js",
     "start": "npm run db:prepare && node dist/index.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",

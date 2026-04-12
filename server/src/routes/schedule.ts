@@ -2,11 +2,12 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma';
 import { authMiddleware } from '../middleware/auth';
-import { getCurrentOrgId, isUserInOrganization } from '../utils/org-access';
+import { isUserInOrganization } from '../utils/org-access';
 import { formatDateOnly, parseDateOnly } from '../utils/kst-date';
 import { findSchedulesCompat, findScheduleOverridesCompat } from '../utils/schedule-access';
 import { timeToMinutes } from '../utils/slot-blocking';
 import { getAvailableSlots } from '../utils/slot-service';
+import { requireCurrentOrgId, respondValidationError } from './_shared';
 
 const router = Router();
 router.use(authMiddleware);
@@ -14,8 +15,8 @@ router.use(authMiddleware);
 // ─── List Schedules ────────────────────────────────────────
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const orgId = await getCurrentOrgId(req.user!.userId, req.header('x-organization-id') ?? undefined);
-    if (!orgId) { res.status(403).json({ error: 'No organization' }); return; }
+    const orgId = await requireCurrentOrgId(req, res);
+    if (!orgId) return;
 
     const coachId = req.query.coachId as string | undefined;
 
@@ -45,8 +46,8 @@ const createScheduleSchema = z.object({
 
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const orgId = await getCurrentOrgId(req.user!.userId, req.header('x-organization-id') ?? undefined);
-    if (!orgId) { res.status(403).json({ error: 'No organization' }); return; }
+    const orgId = await requireCurrentOrgId(req, res);
+    if (!orgId) return;
 
     const body = createScheduleSchema.parse(req.body);
     const dayOfWeeks = body.dayOfWeeks ?? (body.dayOfWeek != null ? [body.dayOfWeek] : []);
@@ -87,10 +88,7 @@ router.post('/', async (req: Request, res: Response) => {
             },
     );
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      res.status(400).json({ error: 'Validation error', details: err.errors });
-      return;
-    }
+    if (respondValidationError(res, err)) return;
     console.error('Create schedule error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -133,10 +131,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     res.json(updated);
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      res.status(400).json({ error: 'Validation error', details: err.errors });
-      return;
-    }
+    if (respondValidationError(res, err)) return;
     console.error('Update schedule error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -176,8 +171,8 @@ const createOverrideSchema = z.object({
 
 router.post('/overrides', async (req: Request, res: Response) => {
   try {
-    const orgId = await getCurrentOrgId(req.user!.userId, req.header('x-organization-id') ?? undefined);
-    if (!orgId) { res.status(403).json({ error: 'No organization' }); return; }
+    const orgId = await requireCurrentOrgId(req, res);
+    if (!orgId) return;
 
     const body = createOverrideSchema.parse(req.body);
     const coachId = body.coachId || req.user!.userId;
@@ -222,10 +217,7 @@ router.post('/overrides', async (req: Request, res: Response) => {
 
     res.status(201).json(override);
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      res.status(400).json({ error: 'Validation error', details: err.errors });
-      return;
-    }
+    if (respondValidationError(res, err)) return;
     console.error('Create override error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
@@ -233,8 +225,8 @@ router.post('/overrides', async (req: Request, res: Response) => {
 
 router.get('/overrides', async (req: Request, res: Response) => {
   try {
-    const orgId = await getCurrentOrgId(req.user!.userId, req.header('x-organization-id') ?? undefined);
-    if (!orgId) { res.status(403).json({ error: 'No organization' }); return; }
+    const orgId = await requireCurrentOrgId(req, res);
+    if (!orgId) return;
 
     const startDate = req.query.startDate as string | undefined;
     const endDate = req.query.endDate as string | undefined;
@@ -262,8 +254,8 @@ router.get('/overrides', async (req: Request, res: Response) => {
 
 router.delete('/overrides/:id', async (req: Request, res: Response) => {
   try {
-    const orgId = await getCurrentOrgId(req.user!.userId, req.header('x-organization-id') ?? undefined);
-    if (!orgId) { res.status(403).json({ error: 'No organization' }); return; }
+    const orgId = await requireCurrentOrgId(req, res);
+    if (!orgId) return;
 
     const id = req.params.id as string;
     const override = await prisma.scheduleOverride.findUnique({ where: { id } });
@@ -283,8 +275,8 @@ router.delete('/overrides/:id', async (req: Request, res: Response) => {
 // ─── Get Available Slots (with Override support) ──────────
 router.get('/slots', async (req: Request, res: Response) => {
   try {
-    const orgId = await getCurrentOrgId(req.user!.userId, req.header('x-organization-id') ?? undefined);
-    if (!orgId) { res.status(403).json({ error: 'No organization' }); return; }
+    const orgId = await requireCurrentOrgId(req, res);
+    if (!orgId) return;
 
     const date = req.query.date as string | undefined;
     const slotCoachId = req.query.coachId as string | undefined;

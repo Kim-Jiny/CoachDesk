@@ -256,6 +256,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) =>
             const NotificationSettingsScreen(isMember: true),
       ),
+      GoRoute(
+        path: '/member/settings',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) => const SettingsScreen(isMember: true),
+      ),
       // Chat detail route (full-screen)
       GoRoute(
         path: '/chat/:roomId',

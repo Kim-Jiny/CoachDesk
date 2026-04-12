@@ -2,8 +2,8 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma';
 import { authMiddleware } from '../middleware/auth';
-import { getCurrentOrgId } from '../utils/org-access';
 import { parseDateOnly } from '../utils/kst-date';
+import { requireCurrentOrgId, respondValidationError } from './_shared';
 
 const router = Router();
 router.use(authMiddleware);
@@ -11,8 +11,8 @@ router.use(authMiddleware);
 // ─── List Sessions ─────────────────────────────────────────
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const orgId = await getCurrentOrgId(req.user!.userId, req.header('x-organization-id') ?? undefined);
-    if (!orgId) { res.status(403).json({ error: 'No organization' }); return; }
+    const orgId = await requireCurrentOrgId(req, res);
+    if (!orgId) return;
 
     const memberId = req.query.memberId as string | undefined;
     const startDate = req.query.startDate as string | undefined;
@@ -44,8 +44,8 @@ router.get('/', async (req: Request, res: Response) => {
 // ─── Get Session ───────────────────────────────────────────
 router.get('/:id', async (req: Request, res: Response) => {
   try {
-    const orgId = await getCurrentOrgId(req.user!.userId, req.header('x-organization-id') ?? undefined);
-    if (!orgId) { res.status(403).json({ error: 'No organization' }); return; }
+    const orgId = await requireCurrentOrgId(req, res);
+    if (!orgId) return;
 
     const session = await prisma.session.findFirst({
       where: { id: req.params.id as string, organizationId: orgId },
@@ -75,8 +75,8 @@ const updateSessionSchema = z.object({
 
 router.put('/:id', async (req: Request, res: Response) => {
   try {
-    const orgId = await getCurrentOrgId(req.user!.userId, req.header('x-organization-id') ?? undefined);
-    if (!orgId) { res.status(403).json({ error: 'No organization' }); return; }
+    const orgId = await requireCurrentOrgId(req, res);
+    if (!orgId) return;
 
     const body = updateSessionSchema.parse(req.body);
 
@@ -96,10 +96,7 @@ router.put('/:id', async (req: Request, res: Response) => {
 
     res.json(session);
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      res.status(400).json({ error: 'Validation error', details: err.errors });
-      return;
-    }
+    if (respondValidationError(res, err)) return;
     console.error('Update session error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
