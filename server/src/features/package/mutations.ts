@@ -170,6 +170,20 @@ export async function approvePauseRequest(params: {
     | string
     | undefined;
   if (memberAccountId) {
+    const pauseBody = `${startDate}부터 ${endDate}까지 정지 승인되었고, 만료일이 ${extensionDays}일 연장됩니다`;
+
+    // Create notification record for member
+    await prisma.notification.create({
+      data: {
+        memberAccountId,
+        organizationId: params.organizationId,
+        type: 'PACKAGE_PAUSE_APPROVED',
+        title: '패키지 정지 승인',
+        body: pauseBody,
+        data: { memberPackageId: memberPackage.id },
+      },
+    });
+
     const memberAccount = await prisma.memberAccount.findUnique({
       where: { id: memberAccountId },
       select: { fcmToken: true, notificationPreferences: true },
@@ -184,7 +198,7 @@ export async function approvePauseRequest(params: {
       await sendPush(
         memberAccount.fcmToken,
         '패키지 정지 승인',
-        `${startDate}부터 ${endDate}까지 정지 승인되었고, 만료일이 ${extensionDays}일 연장됩니다`,
+        pauseBody,
         { type: 'PACKAGE_PAUSE_APPROVED', memberPackageId: memberPackage.id },
       );
     }
@@ -224,6 +238,22 @@ export async function rejectPauseRequest(params: {
     | string
     | undefined;
   if (memberAccountId) {
+    const rejectBody = (params.note?.trim().length ?? 0) > 0
+      ? `정지 신청이 반려되었습니다: ${params.note!.trim()}`
+      : '패키지 정지 신청이 반려되었습니다';
+
+    // Create notification record for member
+    await prisma.notification.create({
+      data: {
+        memberAccountId,
+        organizationId: params.organizationId,
+        type: 'PACKAGE_PAUSE_REJECTED',
+        title: '패키지 정지 반려',
+        body: rejectBody,
+        data: { memberPackageId: memberPackage.id },
+      },
+    });
+
     const memberAccount = await prisma.memberAccount.findUnique({
       where: { id: memberAccountId },
       select: { fcmToken: true, notificationPreferences: true },
@@ -238,9 +268,7 @@ export async function rejectPauseRequest(params: {
       await sendPush(
         memberAccount.fcmToken,
         '패키지 정지 반려',
-        (params.note?.trim().length ?? 0) > 0
-          ? `정지 신청이 반려되었습니다: ${params.note!.trim()}`
-          : '패키지 정지 신청이 반려되었습니다',
+        rejectBody,
         { type: 'PACKAGE_PAUSE_REJECTED', memberPackageId: memberPackage.id },
       );
     }

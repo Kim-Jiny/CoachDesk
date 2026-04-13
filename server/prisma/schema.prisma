@@ -191,8 +191,9 @@ model MemberAccount {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  members   Member[]
-  chatRooms ChatRoom[]
+  members       Member[]
+  chatRooms     ChatRoom[]
+  notifications Notification[]
 }
 
 // ─── Schedule (코치 가용 시간 템플릿) ──────────────────────
@@ -364,20 +365,24 @@ enum Attendance {
 
 // ─── Notification ──────────────────────────────────────────
 model Notification {
-  id             String       @id @default(uuid())
-  userId         String
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  type           String
-  title          String
-  body           String
-  data           Json?
-  isRead         Boolean      @default(false)
-  createdAt      DateTime     @default(now())
+  id               String         @id @default(uuid())
+  userId           String?
+  user             User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  memberAccountId  String?
+  memberAccount    MemberAccount? @relation(fields: [memberAccountId], references: [id], onDelete: Cascade)
+  organizationId   String?
+  organization     Organization?  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  type             String
+  title            String
+  body             String
+  data             Json?
+  isRead           Boolean        @default(false)
+  createdAt        DateTime       @default(now())
 
   @@index([userId, isRead])
   @@index([userId, createdAt])
+  @@index([memberAccountId, isRead])
+  @@index([memberAccountId, createdAt])
 }
 
 // ─── ChatRoom (1:1 채팅방) ───────────────────────────────

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -74,9 +75,9 @@ class FcmService {
     await _messaging.requestPermission(alert: true, badge: true, sound: true);
 
     await _messaging.setForegroundNotificationPresentationOptions(
-      alert: false,
+      alert: true,
       badge: true,
-      sound: false,
+      sound: true,
     );
 
     FirebaseMessaging.onMessage.listen(_onForegroundMessage);
@@ -214,7 +215,12 @@ class FcmService {
       return;
     }
 
-    _showLocalNotification(message);
+    // On iOS, the system already shows the notification via
+    // setForegroundNotificationPresentationOptions(alert: true).
+    // Only show a local notification on Android to avoid duplicates.
+    if (Platform.isAndroid) {
+      _showLocalNotification(message);
+    }
   }
 
   static void _onMessageOpenedApp(RemoteMessage message) {

@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/api_client.dart';
 import '../../core/fcm_service.dart';
+import '../../core/socket_service.dart';
 import '../../core/theme.dart';
 import '../../models/member_booking.dart';
 import '../../models/package.dart';
@@ -32,6 +33,7 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
     super.initState();
     _lifecycleListener = AppLifecycleListener(onResume: _handleResume);
     FcmService.addReservationSyncListener(_handleReservationSync);
+    _registerSocketListeners();
     Future.microtask(() {
       ref.read(memberAuthProvider.notifier).fetchMyClasses();
       ref.read(chatRoomListProvider.notifier).fetchRooms();
@@ -42,9 +44,29 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
 
   @override
   void dispose() {
+    _unregisterSocketListeners();
     FcmService.removeReservationSyncListener(_handleReservationSync);
     _lifecycleListener?.dispose();
     super.dispose();
+  }
+
+  void _onSocketReservationEvent(dynamic _) {
+    if (!mounted) return;
+    _loadReservations();
+  }
+
+  void _registerSocketListeners() {
+    final socket = SocketService.instance;
+    socket.on('reservation:created', _onSocketReservationEvent);
+    socket.on('reservation:updated', _onSocketReservationEvent);
+    socket.on('reservation:cancelled', _onSocketReservationEvent);
+  }
+
+  void _unregisterSocketListeners() {
+    final socket = SocketService.instance;
+    socket.off('reservation:created', _onSocketReservationEvent);
+    socket.off('reservation:updated', _onSocketReservationEvent);
+    socket.off('reservation:cancelled', _onSocketReservationEvent);
   }
 
   void _handleResume() {
@@ -375,6 +397,14 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
                         ),
                       ),
                       IconButton(
+                        onPressed: () => context.push('/member/notifications'),
+                        icon: Icon(
+                          Icons.notifications_outlined,
+                          color: Colors.white.withValues(alpha: 0.9),
+                        ),
+                        tooltip: '알림',
+                      ),
+                      IconButton(
                         onPressed: () => context.push('/member/chat'),
                         icon: Badge(
                           isLabelVisible: unreadCount > 0,
@@ -500,6 +530,17 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
                         ),
                       ),
                     ),
+                    const Spacer(),
+                    GestureDetector(
+                      onTap: () => context.push('/member/history'),
+                      child: Text(
+                        '전체 보기',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -529,12 +570,40 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(
-                            DateFormat('M/d (E)', 'ko').format(r.date),
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  DateFormat('M/d (E)', 'ko').format(r.date),
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: r.status == 'CONFIRMED'
+                                      ? Colors.green.withValues(alpha: 0.1)
+                                      : Colors.orange.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  r.status == 'CONFIRMED' ? '확정' : '대기',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600,
+                                    color: r.status == 'CONFIRMED'
+                                        ? Colors.green.shade700
+                                        : Colors.orange.shade700,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 4),
                           Text(
@@ -791,10 +860,16 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
                     padding: const EdgeInsets.only(bottom: 12),
                     child: _ClassCard(
                       memberClass: classes[index],
-                      onTap: () => context.push(
-                        '/member/class/${classes[index].organizationId}',
-                        extra: classes[index].organizationName,
-                      ),
+                      onTap: () async {
+                        await context.push(
+                          '/member/class/${classes[index].organizationId}',
+                          extra: classes[index].organizationName,
+                        );
+                        if (mounted) {
+                          _loadReservations();
+                          _loadPackages();
+                        }
+                      },
                       onCoachTap: (coach) =>
                           _openChatWithCoach(classes[index], coach),
                     ),

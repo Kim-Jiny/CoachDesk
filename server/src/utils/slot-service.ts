@@ -1,7 +1,7 @@
 import { getKstCurrentTimeMinutes, getKstDayOfWeek, isKstToday, parseDateOnly } from './kst-date';
 import { prisma } from './prisma';
 import { findSchedulesCompat, findScheduleOverridesCompat } from './schedule-access';
-import { isTimeRangeClosed } from './slot-blocking';
+import { isTimeRangeClosed, isTimeRangeOverlapping } from './slot-blocking';
 import { isOverlappingTimeRange } from '../features/shared/time-range';
 
 type SlotResult = {
@@ -122,7 +122,7 @@ export async function getAvailableSlots(params: {
     const visibilityOverride = visibilityOverrides.find(
       (override) =>
         override.coachId === slot.coachId &&
-        isTimeRangeClosed(override, slot.startTime, slot.endTime),
+        isTimeRangeOverlapping(override, slot.startTime, slot.endTime),
     );
     const blockingOverride = closedOverrides.find(
       (override) =>

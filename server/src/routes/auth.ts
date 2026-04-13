@@ -535,6 +535,124 @@ router.get('/member/my-reservations', authMiddleware, async (req: Request, res: 
   }
 });
 
+// ─── Member: Reservation History ──────────────────────────
+router.get('/member/reservation-history', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const memberAccountId = req.user!.userId;
+    const cursor = req.query.cursor as string | undefined;
+    const limit = Math.min(parseInt(req.query.limit as string || '20', 10), 50);
+
+    const members = await prisma.member.findMany({
+      where: { memberAccountId, status: 'ACTIVE' },
+      select: { id: true },
+    });
+
+    if (members.length === 0) {
+      res.json({ reservations: [], nextCursor: null });
+      return;
+    }
+
+    const reservations = await prisma.reservation.findMany({
+      where: {
+        memberId: { in: members.map((m) => m.id) },
+      },
+      include: {
+        coach: { select: { id: true, name: true } },
+        organization: { select: { id: true, name: true } },
+        session: { select: { attendance: true, feedback: true } },
+      },
+      orderBy: [{ date: 'desc' }, { startTime: 'desc' }, { id: 'desc' }],
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      take: limit + 1,
+    });
+
+    const hasMore = reservations.length > limit;
+    const items = hasMore ? reservations.slice(0, limit) : reservations;
+    const nextCursor = hasMore ? items[items.length - 1].id : null;
+
+    res.json({
+      reservations: items.map((r) => ({
+        id: r.id,
+        organizationId: r.organizationId,
+        organizationName: r.organization.name,
+        coachId: r.coachId,
+        coachName: r.coach.name,
+        date: formatDateOnly(r.date),
+        startTime: r.startTime,
+        endTime: r.endTime,
+        status: r.status,
+        attendance: r.session?.attendance ?? null,
+        feedback: r.session?.feedback ?? null,
+      })),
+      nextCursor,
+    });
+  } catch (err) {
+    console.error('Member reservation-history error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── Member: Notifications ─────────────────────────────────
+router.get('/member/notifications', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const notifications = await prisma.notification.findMany({
+      where: { memberAccountId: req.user!.userId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+    res.json(notifications);
+  } catch (err) {
+    console.error('Member list notifications error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.patch('/member/notifications/:id/read', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const notification = await prisma.notification.findFirst({
+      where: { id: req.params.id as string, memberAccountId: req.user!.userId },
+      select: { id: true },
+    });
+    if (!notification) {
+      res.status(404).json({ error: 'Notification not found' });
+      return;
+    }
+    await prisma.notification.update({
+      where: { id: notification.id },
+      data: { isRead: true },
+    });
+    res.json({ message: 'Marked as read' });
+  } catch (err) {
+    console.error('Member mark read error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.patch('/member/notifications/read-all', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    await prisma.notification.updateMany({
+      where: { memberAccountId: req.user!.userId, isRead: false },
+      data: { isRead: true },
+    });
+    res.json({ message: 'All marked as read' });
+  } catch (err) {
+    console.error('Member mark all read error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/member/notifications/unread-count', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const count = await prisma.notification.count({
+      where: { memberAccountId: req.user!.userId, isRead: false },
+    });
+    res.json({ count });
+  } catch (err) {
+    console.error('Member unread count error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 const memberPackagePauseRequestSchema = z.object({
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),

@@ -28,6 +28,8 @@ import '../screens/packages/assign_package_screen.dart';
 import '../screens/session/session_complete_screen.dart';
 import '../screens/session/session_list_screen.dart';
 import '../screens/notifications/notification_screen.dart';
+import '../screens/notifications/member_notification_screen.dart';
+import '../screens/member_home/member_reservation_history_screen.dart';
 import '../screens/report/revenue_report_screen.dart';
 import '../screens/report/attendance_report_screen.dart';
 import '../screens/settings/schedule_setting_screen.dart';
@@ -214,6 +216,17 @@ final routerProvider = Provider<GoRouter>((ref) {
           orgId: state.pathParameters['orgId']!,
           organizationName: state.extra as String? ?? '',
         ),
+      ),
+      GoRoute(
+        path: '/member/history',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) =>
+            const MemberReservationHistoryScreen(),
+      ),
+      GoRoute(
+        path: '/member/notifications',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) => const MemberNotificationScreen(),
       ),
       // Full-screen routes
       GoRoute(

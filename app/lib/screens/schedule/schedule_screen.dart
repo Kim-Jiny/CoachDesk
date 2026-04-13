@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
 
 import '../../core/api_client.dart';
+import '../../core/socket_service.dart';
 import '../../core/theme.dart';
 import '../../providers/reservation_provider.dart';
 import '../../providers/schedule_override_provider.dart';
@@ -68,10 +69,36 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
   @override
   void initState() {
     super.initState();
+    _registerSocketListeners();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _refreshAll();
     });
+  }
+
+  @override
+  void dispose() {
+    _unregisterSocketListeners();
+    super.dispose();
+  }
+
+  void _onSocketReservationEvent(dynamic _) {
+    if (!mounted) return;
+    _refreshAll();
+  }
+
+  void _registerSocketListeners() {
+    final socket = SocketService.instance;
+    socket.on('reservation:created', _onSocketReservationEvent);
+    socket.on('reservation:updated', _onSocketReservationEvent);
+    socket.on('reservation:cancelled', _onSocketReservationEvent);
+  }
+
+  void _unregisterSocketListeners() {
+    final socket = SocketService.instance;
+    socket.off('reservation:created', _onSocketReservationEvent);
+    socket.off('reservation:updated', _onSocketReservationEvent);
+    socket.off('reservation:cancelled', _onSocketReservationEvent);
   }
 
   Future<void> _refreshAll() async {

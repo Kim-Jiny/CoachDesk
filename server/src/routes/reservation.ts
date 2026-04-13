@@ -24,10 +24,25 @@ router.use(authMiddleware);
 async function sendMemberReservationCancelledPush(params: {
   memberAccountId?: string | null;
   reservationId: string;
+  organizationId?: string;
   date: Date;
   startTime: string;
 }) {
   if (!params.memberAccountId) return;
+
+  const body = `${formatDateOnly(params.date)} ${params.startTime} 예약이 취소되었습니다`;
+
+  // Create notification record for member
+  await prisma.notification.create({
+    data: {
+      memberAccountId: params.memberAccountId,
+      organizationId: params.organizationId,
+      type: 'RESERVATION_CANCELLED',
+      title: '예약 취소',
+      body,
+      data: { reservationId: params.reservationId },
+    },
+  });
 
   const memberAccount = await prisma.memberAccount.findUnique({
     where: { id: params.memberAccountId },
@@ -47,7 +62,7 @@ async function sendMemberReservationCancelledPush(params: {
   sendPush(
     memberAccount.fcmToken,
     '예약 취소',
-    `${formatDateOnly(params.date)} ${params.startTime} 예약이 취소되었습니다`,
+    body,
     { type: 'RESERVATION_CANCELLED', reservationId: params.reservationId },
   );
 }
@@ -139,6 +154,18 @@ router.post('/', async (req: Request, res: Response) => {
           { type: 'NEW_RESERVATION', reservationId: reservation.id },
         );
       }
+
+      // Create notification record for member
+      await prisma.notification.create({
+        data: {
+          memberAccountId,
+          organizationId: orgId,
+          type: 'NEW_RESERVATION',
+          title: '새 예약 등록',
+          body: `${body.date} ${body.startTime} 예약이 등록되었습니다`,
+          data: { reservationId: reservation.id },
+        },
+      });
     }
 
     res.status(201).json(serialized);
@@ -226,6 +253,7 @@ router.patch('/:id/status', async (req: Request, res: Response) => {
       await sendMemberReservationCancelledPush({
         memberAccountId: existingReservation.member.memberAccountId,
         reservationId: reservation.id,
+        organizationId: orgId,
         date: reservation.date,
         startTime: reservation.startTime,
       });
@@ -235,19 +263,20 @@ router.patch('/:id/status', async (req: Request, res: Response) => {
         select: { fcmToken: true, notificationPreferences: true },
       });
 
+      const dateStr = formatDateOnly(reservation.date);
       let notificationTitle = '예약 상태 변경';
-      let notificationBody = `${existingReservation.member.name}님의 예약 상태가 변경되었습니다`;
+      let notificationBody = `${dateStr} ${reservation.startTime} 예약 상태가 변경되었습니다`;
 
       if (status === 'CONFIRMED') {
-        notificationTitle = '예약 승인';
-        notificationBody = `${existingReservation.member.name}님의 예약이 승인되었습니다`;
+        notificationTitle = '예약 확정';
+        notificationBody = `${dateStr} ${reservation.startTime} 예약이 확정되었습니다`;
       } else if (status === 'CANCELLED') {
         if (existingReservation.status === 'PENDING') {
           notificationTitle = '예약 신청 거절';
-          notificationBody = `${existingReservation.member.name}님의 예약 신청이 거절되었습니다`;
+          notificationBody = `${dateStr} ${reservation.startTime} 예약 신청이 거절되었습니다`;
         } else {
           notificationTitle = '예약 취소';
-          notificationBody = `${existingReservation.member.name}님의 예약이 취소되었습니다`;
+          notificationBody = `${dateStr} ${reservation.startTime} 예약이 취소되었습니다`;
         }
       }
 
@@ -265,6 +294,18 @@ router.patch('/:id/status', async (req: Request, res: Response) => {
           { type: 'RESERVATION_STATUS_UPDATED', reservationId: reservation.id },
         );
       }
+
+      // Create notification record for member
+      await prisma.notification.create({
+        data: {
+          memberAccountId: existingReservation.member.memberAccountId,
+          organizationId: orgId,
+          type: 'RESERVATION_STATUS_UPDATED',
+          title: notificationTitle,
+          body: notificationBody,
+          data: { reservationId: reservation.id },
+        },
+      });
     }
 
     res.json(serialized);
@@ -348,6 +389,10 @@ router.patch('/:id/delay', async (req: Request, res: Response) => {
         where: { id: existingReservation.member.memberAccountId },
         select: { fcmToken: true, notificationPreferences: true },
       });
+      const absMinutes = Math.abs(body.delayMinutes);
+      const direction = body.delayMinutes > 0 ? '미뤄져' : '앞당겨져';
+      const delayBody = `${dateStr} 예약이 ${absMinutes}분 ${direction} ${newStartTime}에 시작합니다`;
+
       if (
         memberAccount?.fcmToken &&
         shouldSendPushForType(
@@ -355,15 +400,25 @@ router.patch('/:id/delay', async (req: Request, res: Response) => {
           'RESERVATION_DELAYED',
         )
       ) {
-        const absMinutes = Math.abs(body.delayMinutes);
-        const direction = body.delayMinutes > 0 ? '미뤄져' : '앞당겨져';
         sendPush(
           memberAccount.fcmToken,
           '예약 시간이 변경되었습니다',
-          `${dateStr} 예약이 ${absMinutes}분 ${direction} ${newStartTime}에 시작합니다`,
+          delayBody,
           { type: 'RESERVATION_DELAYED', reservationId: reservation.id },
         );
       }
+
+      // Create notification record for member
+      await prisma.notification.create({
+        data: {
+          memberAccountId: existingReservation.member.memberAccountId,
+          organizationId: orgId,
+          type: 'RESERVATION_DELAYED',
+          title: '예약 시간이 변경되었습니다',
+          body: delayBody,
+          data: { reservationId: reservation.id },
+        },
+      });
     }
 
     res.json(serialized);
@@ -461,6 +516,7 @@ router.delete('/:id', async (req: Request, res: Response) => {
     await sendMemberReservationCancelledPush({
       memberAccountId: reservation.member?.memberAccountId,
       reservationId: reservation.id,
+      organizationId: orgId,
       date: reservation.date,
       startTime: reservation.startTime,
     });

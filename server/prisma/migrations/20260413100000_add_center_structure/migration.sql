@@ -5,18 +5,19 @@ CREATE TYPE "JoinRequestStatus" AS ENUM ('PENDING', 'APPROVED', 'REJECTED');
 CREATE TYPE "PlanType" AS ENUM ('FREE', 'BASIC', 'PRO', 'ENTERPRISE');
 
 -- AlterEnum: OrgRole (add new values)
-ALTER TYPE "OrgRole" ADD VALUE 'MANAGER';
-ALTER TYPE "OrgRole" ADD VALUE 'STAFF';
-ALTER TYPE "OrgRole" ADD VALUE 'VIEWER';
+-- These must be outside a transaction so the values can be used immediately.
+ALTER TYPE "OrgRole" ADD VALUE IF NOT EXISTS 'MANAGER';
+ALTER TYPE "OrgRole" ADD VALUE IF NOT EXISTS 'STAFF';
+ALTER TYPE "OrgRole" ADD VALUE IF NOT EXISTS 'VIEWER';
 
 -- AlterTable: Organization (add plan fields)
-ALTER TABLE "Organization" ADD COLUMN "planType" "PlanType" NOT NULL DEFAULT 'FREE';
-ALTER TABLE "Organization" ADD COLUMN "maxAdminCount" INTEGER NOT NULL DEFAULT 2;
-ALTER TABLE "Organization" ADD COLUMN "maxMemberCount" INTEGER NOT NULL DEFAULT 30;
-ALTER TABLE "Organization" ADD COLUMN "planExpiresAt" TIMESTAMP(3);
+ALTER TABLE "Organization" ADD COLUMN IF NOT EXISTS "planType" "PlanType" NOT NULL DEFAULT 'FREE';
+ALTER TABLE "Organization" ADD COLUMN IF NOT EXISTS "maxAdminCount" INTEGER NOT NULL DEFAULT 2;
+ALTER TABLE "Organization" ADD COLUMN IF NOT EXISTS "maxMemberCount" INTEGER NOT NULL DEFAULT 30;
+ALTER TABLE "Organization" ADD COLUMN IF NOT EXISTS "planExpiresAt" TIMESTAMP(3);
 
 -- CreateTable: CenterJoinRequest
-CREATE TABLE "CenterJoinRequest" (
+CREATE TABLE IF NOT EXISTS "CenterJoinRequest" (
     "id" TEXT NOT NULL,
     "userId" TEXT NOT NULL,
     "organizationId" TEXT NOT NULL,
@@ -31,11 +32,13 @@ CREATE TABLE "CenterJoinRequest" (
 );
 
 -- CreateIndex
-CREATE INDEX "CenterJoinRequest_organizationId_status_idx" ON "CenterJoinRequest"("organizationId", "status");
-CREATE UNIQUE INDEX "CenterJoinRequest_userId_organizationId_status_key" ON "CenterJoinRequest"("userId", "organizationId", "status");
+CREATE INDEX IF NOT EXISTS "CenterJoinRequest_organizationId_status_idx" ON "CenterJoinRequest"("organizationId", "status");
+CREATE UNIQUE INDEX IF NOT EXISTS "CenterJoinRequest_userId_organizationId_status_key" ON "CenterJoinRequest"("userId", "organizationId", "status");
 
 -- AddForeignKey
+ALTER TABLE "CenterJoinRequest" DROP CONSTRAINT IF EXISTS "CenterJoinRequest_userId_fkey";
 ALTER TABLE "CenterJoinRequest" ADD CONSTRAINT "CenterJoinRequest_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "CenterJoinRequest" DROP CONSTRAINT IF EXISTS "CenterJoinRequest_organizationId_fkey";
 ALTER TABLE "CenterJoinRequest" ADD CONSTRAINT "CenterJoinRequest_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- Migrate existing role data: ADMIN -> MANAGER, COACH -> STAFF
