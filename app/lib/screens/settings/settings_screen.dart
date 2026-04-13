@@ -148,6 +148,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     onTap: () => context.push('/reports/attendance'),
                   ),
                   _SettingsItem(
+                    icon: Icons.business_rounded,
+                    iconColor: Colors.indigo,
+                    title: '센터 설정',
+                    subtitle: '센터 정보, 예약 정책, 주의사항 관리',
+                    onTap: () => context.push('/settings/center'),
+                  ),
+                  _SettingsItem(
                     icon: Icons.schedule_rounded,
                     iconColor: Colors.orange,
                     title: '수업시간 설정',
@@ -157,6 +164,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     icon: Icons.group_rounded,
                     iconColor: AppTheme.successColor,
                     title: '팀 관리',
+                    subtitle: '팀원 목록, 합류 신청, 역할 관리',
                     onTap: () => context.push('/settings/team'),
                   ),
                 ],
