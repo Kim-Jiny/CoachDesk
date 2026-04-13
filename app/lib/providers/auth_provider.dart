@@ -428,6 +428,26 @@ class AuthNotifier extends Notifier<AuthState> {
     _syncWidgets();
   }
 
+  Future<bool> updateProfile({String? name, String? phone}) async {
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      final data = <String, dynamic>{};
+      if (name != null) data['name'] = name;
+      if (phone != null) data['phone'] = phone;
+
+      final response = await _dio.put('/auth/profile', data: data);
+      final updatedUser = User.fromJson(response.data as Map<String, dynamic>);
+
+      state = state.copyWith(user: updatedUser, isLoading: false);
+      _syncWidgets();
+      return true;
+    } on DioException catch (e) {
+      final msg = e.response?.data?['error'] as String? ?? '프로필 수정에 실패했습니다';
+      state = state.copyWith(isLoading: false, error: msg);
+      return false;
+    }
+  }
+
   Future<String?> deleteAccount() async {
     try {
       await _dio.delete('/auth/profile');

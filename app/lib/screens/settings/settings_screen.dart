@@ -59,6 +59,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   iconColor: AppTheme.primaryColor,
                   title: '이름',
                   subtitle: name ?? '-',
+                  onTap: isMember ? null : () => context.push('/settings/profile'),
                 ),
                 _SettingsItem(
                   icon: Icons.mail_rounded,

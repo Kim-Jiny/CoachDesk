@@ -35,6 +35,7 @@ import '../screens/report/attendance_report_screen.dart';
 import '../screens/settings/schedule_setting_screen.dart';
 import '../screens/settings/team_management_screen.dart';
 import '../screens/settings/notification_settings_screen.dart';
+import '../screens/settings/profile_edit_screen.dart';
 import '../screens/chat/chat_room_list_screen.dart';
 import '../screens/chat/chat_screen.dart';
 import '../screens/center/center_onboarding_screen.dart';
@@ -307,6 +308,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const AttendanceReportScreen(),
       ),
       // Settings sub-routes
+      GoRoute(
+        path: '/settings/profile',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) => const ProfileEditScreen(),
+      ),
       GoRoute(
         path: '/settings/schedules',
         parentNavigatorKey: rootNavigatorKey,
