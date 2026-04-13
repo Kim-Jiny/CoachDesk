@@ -26,10 +26,12 @@ class NotificationScreen extends ConsumerWidget {
         actions: [
           TextButton(
             onPressed: () async {
-              final dio = ref.read(dioProvider);
-              await dio.patch('/notifications/read-all');
-              ref.invalidate(notificationsProvider);
-              ref.invalidate(unreadNotificationCountProvider);
+              try {
+                final dio = ref.read(dioProvider);
+                await dio.patch('/notifications/read-all');
+                ref.invalidate(notificationsProvider);
+                ref.invalidate(unreadNotificationCountProvider);
+              } catch (_) {}
             },
             child: const Text('전체 읽음'),
           ),
@@ -81,10 +83,12 @@ class NotificationScreen extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(16),
                     onTap: () async {
                       if (!isRead) {
-                        final dio = ref.read(dioProvider);
-                        await dio.patch('/notifications/${item['id']}/read');
-                        ref.invalidate(notificationsProvider);
-                        ref.invalidate(unreadNotificationCountProvider);
+                        try {
+                          final dio = ref.read(dioProvider);
+                          await dio.patch('/notifications/${item['id']}/read');
+                          ref.invalidate(notificationsProvider);
+                          ref.invalidate(unreadNotificationCountProvider);
+                        } catch (_) {}
                       }
                     },
                     child: Container(
@@ -176,13 +180,14 @@ class NotificationScreen extends ConsumerWidget {
   }
 
   static IconData _iconForType(String? type) {
-    switch (type) {
-      case 'NEW_RESERVATION':
-        return Icons.event_available_rounded;
-      case 'RESERVATION_CANCELLED':
-        return Icons.event_busy_rounded;
-      default:
-        return Icons.notifications_rounded;
-    }
+    return switch (type) {
+      'NEW_RESERVATION' => Icons.event_available_rounded,
+      'RESERVATION_STATUS_UPDATED' => Icons.event_note_rounded,
+      'RESERVATION_CANCELLED' => Icons.event_busy_rounded,
+      'RESERVATION_DELAYED' => Icons.schedule_rounded,
+      'PACKAGE_PAUSE_APPROVED' => Icons.pause_circle_outline,
+      'PACKAGE_PAUSE_REJECTED' => Icons.cancel_outlined,
+      _ => Icons.notifications_rounded,
+    };
   }
 }

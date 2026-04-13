@@ -1,6 +1,6 @@
 import { prisma } from '../../utils/prisma';
 import { shouldSendPushForType } from '../../utils/notification-preferences';
-import { addDays, formatDateOnly, parseDateOnly } from '../../utils/kst-date';
+import { addDays, formatDateOnly, getKstToday, parseDateOnly } from '../../utils/kst-date';
 import {
   findMemberPackageCompat,
   updateMemberPackagePauseCompat,
@@ -107,7 +107,7 @@ export async function assignPackageToMember(params: {
   }
 
   const expiryDate = pkg.validDays
-    ? new Date(Date.now() + pkg.validDays * 24 * 60 * 60 * 1000)
+    ? parseDateOnly(addDays(getKstToday(), pkg.validDays))
     : undefined;
 
   return prisma.memberPackage.create({
@@ -227,7 +227,7 @@ export async function rejectPauseRequest(params: {
     throw new PackageMutationError('NO_PENDING_PAUSE_REQUEST');
   }
 
-  await updateMemberPackagePauseCompat(memberPackage.id, {
+  const updatedMemberPackage = await updateMemberPackagePauseCompat(memberPackage.id, {
     pauseRequestedStartDate: null,
     pauseRequestedEndDate: null,
     pauseRequestStatus: 'NONE',
@@ -273,4 +273,6 @@ export async function rejectPauseRequest(params: {
       );
     }
   }
+
+  return { memberPackage: updatedMemberPackage };
 }

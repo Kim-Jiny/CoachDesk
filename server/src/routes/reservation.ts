@@ -257,7 +257,7 @@ router.patch('/:id/status', async (req: Request, res: Response) => {
         date: reservation.date,
         startTime: reservation.startTime,
       });
-    } else if (existingReservation.member.memberAccountId) {
+    } else if (existingReservation.member.memberAccountId && status !== existingReservation.status) {
       const memberAccount = await prisma.memberAccount.findUnique({
         where: { id: existingReservation.member.memberAccountId },
         select: { fcmToken: true, notificationPreferences: true },

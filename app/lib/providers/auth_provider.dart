@@ -120,6 +120,7 @@ class AuthNotifier extends Notifier<AuthState> {
         user: user,
         centers: centers,
         selectedCenter: selected,
+        clearSelectedCenter: selected == null,
       );
       try {
         await FcmService.syncNotificationPreferences(isMember: false);
@@ -397,6 +398,7 @@ class AuthNotifier extends Notifier<AuthState> {
       state = state.copyWith(
         centers: centers,
         selectedCenter: selected,
+        clearSelectedCenter: selected == null,
         isLoading: false,
       );
     } catch (_) {

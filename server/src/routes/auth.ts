@@ -607,6 +607,19 @@ router.get('/member/notifications', authMiddleware, async (req: Request, res: Re
   }
 });
 
+router.patch('/member/notifications/read-all', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    await prisma.notification.updateMany({
+      where: { memberAccountId: req.user!.userId, isRead: false },
+      data: { isRead: true },
+    });
+    res.json({ message: 'All marked as read' });
+  } catch (err) {
+    console.error('Member mark all read error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 router.patch('/member/notifications/:id/read', authMiddleware, async (req: Request, res: Response) => {
   try {
     const notification = await prisma.notification.findFirst({
@@ -624,19 +637,6 @@ router.patch('/member/notifications/:id/read', authMiddleware, async (req: Reque
     res.json({ message: 'Marked as read' });
   } catch (err) {
     console.error('Member mark read error:', err);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-router.patch('/member/notifications/read-all', authMiddleware, async (req: Request, res: Response) => {
-  try {
-    await prisma.notification.updateMany({
-      where: { memberAccountId: req.user!.userId, isRead: false },
-      data: { isRead: true },
-    });
-    res.json({ message: 'All marked as read' });
-  } catch (err) {
-    console.error('Member mark all read error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

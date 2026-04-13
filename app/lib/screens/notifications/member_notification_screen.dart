@@ -26,9 +26,11 @@ class MemberNotificationScreen extends ConsumerWidget {
         actions: [
           TextButton(
             onPressed: () async {
-              final dio = ref.read(dioProvider);
-              await dio.patch('/auth/member/notifications/read-all');
-              ref.invalidate(memberNotificationsProvider);
+              try {
+                final dio = ref.read(dioProvider);
+                await dio.patch('/auth/member/notifications/read-all');
+                ref.invalidate(memberNotificationsProvider);
+              } catch (_) {}
             },
             child: const Text('전체 읽음'),
           ),
@@ -83,11 +85,13 @@ class MemberNotificationScreen extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(16),
                     onTap: () async {
                       if (!isRead) {
-                        final dio = ref.read(dioProvider);
-                        await dio.patch(
-                          '/auth/member/notifications/${item['id']}/read',
-                        );
-                        ref.invalidate(memberNotificationsProvider);
+                        try {
+                          final dio = ref.read(dioProvider);
+                          await dio.patch(
+                            '/auth/member/notifications/${item['id']}/read',
+                          );
+                          ref.invalidate(memberNotificationsProvider);
+                        } catch (_) {}
                       }
                     },
                     child: Container(
