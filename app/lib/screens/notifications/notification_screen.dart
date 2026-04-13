@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../widgets/common.dart';
+import '../home/home_screen.dart';
 
 final notificationsProvider = FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {
   final dio = ref.watch(dioProvider);
@@ -28,6 +29,7 @@ class NotificationScreen extends ConsumerWidget {
               final dio = ref.read(dioProvider);
               await dio.patch('/notifications/read-all');
               ref.invalidate(notificationsProvider);
+              ref.invalidate(unreadNotificationCountProvider);
             },
             child: const Text('전체 읽음'),
           ),
@@ -40,9 +42,15 @@ class NotificationScreen extends ConsumerWidget {
         },
         child: notifications.when(
           loading: () => const ShimmerLoading(style: ShimmerStyle.list, itemCount: 8),
-          error: (_, _) => const EmptyState(
-            icon: Icons.notifications_off_outlined,
-            message: '알림을 불러올 수 없습니다',
+          error: (_, _) => ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: const [
+              SizedBox(height: 140),
+              EmptyState(
+                icon: Icons.notifications_off_outlined,
+                message: '알림을 불러올 수 없습니다',
+              ),
+            ],
           ),
           data: (items) {
             if (items.isEmpty) {
@@ -76,6 +84,7 @@ class NotificationScreen extends ConsumerWidget {
                         final dio = ref.read(dioProvider);
                         await dio.patch('/notifications/${item['id']}/read');
                         ref.invalidate(notificationsProvider);
+                        ref.invalidate(unreadNotificationCountProvider);
                       }
                     },
                     child: Container(

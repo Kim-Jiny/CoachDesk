@@ -1487,39 +1487,60 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                       builder: (context) {
                         // Build merged timeline items
                         final timelineItems = <_TimelineItem>[];
-                        final reservationMap = <String, List<Reservation>>{};
+                        // Separate active vs inactive reservations per key
+                        final activeReservationMap =
+                            <String, List<Reservation>>{};
+                        final cancelledCountMap = <String, int>{};
+                        const inactiveStatuses = {
+                          'CANCELLED',
+                          'NO_SHOW',
+                        };
                         for (final r in dayReservations) {
                           final key = '${r.coachId}|${r.startTime}';
-                          reservationMap.putIfAbsent(key, () => []).add(r);
+                          if (inactiveStatuses.contains(r.status)) {
+                            cancelledCountMap[key] =
+                                (cancelledCountMap[key] ?? 0) + 1;
+                          } else {
+                            activeReservationMap
+                                .putIfAbsent(key, () => [])
+                                .add(r);
+                          }
                         }
 
                         final matchedKeys = <String>{};
 
                         // Add slots (with or without reservation)
                         for (final slot in _slots) {
-                          final key = '${slot['coachId']}|${slot['startTime']}';
-                          final reservations = reservationMap[key];
-                          if (reservations != null && reservations.isNotEmpty) {
+                          final key =
+                              '${slot['coachId']}|${slot['startTime']}';
+                          final reservations = activeReservationMap[key];
+                          final cancelled = cancelledCountMap[key] ?? 0;
+                          if (reservations != null &&
+                              reservations.isNotEmpty) {
                             matchedKeys.add(key);
                             timelineItems.add(
                               _TimelineItem(
                                 startTime: reservations.first.startTime,
                                 reservations: reservations,
                                 slot: slot,
+                                cancelledCount: cancelled,
                               ),
                             );
                           } else {
+                            matchedKeys.add(key);
                             timelineItems.add(
                               _TimelineItem(
                                 startTime: slot['startTime'] as String,
                                 slot: slot,
+                                cancelledCount: cancelled,
                               ),
                             );
                           }
                         }
 
-                        // Add reservations not matched to any slot
-                        for (final entry in reservationMap.entries) {
+                        // Add active reservations not matched to any slot
+                        for (final entry
+                            in activeReservationMap.entries) {
                           final key = entry.key;
                           if (!matchedKeys.contains(key)) {
                             final reservations = entry.value;
@@ -1620,19 +1641,29 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                                       ),
                               );
                             } else {
+                              final hasCancelled = item.cancelledCount > 0;
+                              String slotTitle;
+                              String slotSubtitle;
+                              if (item.slot!['blocked'] == true) {
+                                slotTitle = '예약 마감된 타임';
+                                slotSubtitle = '눌러서 마감 해제';
+                              } else if (hasCancelled) {
+                                slotTitle =
+                                    '빈 타임 · 취소 ${item.cancelledCount}건';
+                                slotSubtitle = '눌러서 예약 채우기 / 마감 처리';
+                              } else if (item.slot!['isPublic'] == true) {
+                                slotTitle = '빈 타임 · 공개';
+                                slotSubtitle = '회원이 예약 가능한 시간';
+                              } else {
+                                slotTitle = '빈 타임 · 비공개';
+                                slotSubtitle = '회원 앱에는 보이지 않는 시간';
+                              }
                               return EmptySlotCard(
                                 slot: item.slot!,
                                 isPast: isPast,
-                                title: item.slot!['blocked'] == true
-                                    ? '예약 마감된 타임'
-                                    : item.slot!['isPublic'] == true
-                                    ? '빈 타임 · 공개'
-                                    : '빈 타임 · 비공개',
-                                subtitle: item.slot!['blocked'] == true
-                                    ? '눌러서 마감 해제'
-                                    : item.slot!['isPublic'] == true
-                                    ? '회원이 예약 가능한 시간'
-                                    : '회원 앱에는 보이지 않는 시간',
+                                title: slotTitle,
+                                subtitle: slotSubtitle,
+                                hasCancelled: hasCancelled,
                                 onTap: isPast
                                     ? null
                                     : () => _showEmptySlotActions(item.slot!),
@@ -1708,8 +1739,14 @@ class _TimelineItem {
   final String startTime;
   final List<Reservation>? reservations;
   final Map<String, dynamic>? slot;
+  final int cancelledCount;
 
-  _TimelineItem({required this.startTime, this.reservations, this.slot});
+  _TimelineItem({
+    required this.startTime,
+    this.reservations,
+    this.slot,
+    this.cancelledCount = 0,
+  });
 
   bool get hasReservations => reservations != null && reservations!.isNotEmpty;
 }

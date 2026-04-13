@@ -349,6 +349,7 @@ class EmptySlotCard extends StatelessWidget {
   final VoidCallback? onTap;
   final String? title;
   final String? subtitle;
+  final bool hasCancelled;
 
   const EmptySlotCard({
     super.key,
@@ -357,6 +358,7 @@ class EmptySlotCard extends StatelessWidget {
     this.onTap,
     this.title,
     this.subtitle,
+    this.hasCancelled = false,
   });
 
   @override
@@ -414,11 +416,15 @@ class EmptySlotCard extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: isPast
                         ? Colors.grey.shade100
+                        : hasCancelled
+                        ? Colors.red.withValues(alpha: 0.04)
                         : AppTheme.primaryColor.withValues(alpha: 0.04),
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
                       color: isPast
                           ? Colors.grey.shade300
+                          : hasCancelled
+                          ? Colors.red.withValues(alpha: 0.15)
                           : AppTheme.primaryColor.withValues(alpha: 0.12),
                     ),
                   ),
@@ -426,10 +432,16 @@ class EmptySlotCard extends StatelessWidget {
                     children: [
                       CircleAvatar(
                         radius: 18,
-                        backgroundColor: Colors.grey.shade100,
+                        backgroundColor: hasCancelled && !isPast
+                            ? Colors.red.withValues(alpha: 0.1)
+                            : Colors.grey.shade100,
                         child: Icon(
-                          Icons.event_available_rounded,
-                          color: isPast
+                          hasCancelled
+                              ? Icons.event_busy_rounded
+                              : Icons.event_available_rounded,
+                          color: hasCancelled && !isPast
+                              ? Colors.red.shade400
+                              : isPast
                               ? Colors.grey.shade500
                               : Colors.grey.shade400,
                           size: 18,
