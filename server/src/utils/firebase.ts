@@ -8,8 +8,8 @@ let firebaseInitialized = false;
 export function initializeFirebase() {
   if (firebaseInitialized) return;
 
-  if (env.GOOGLE_APPLICATION_CREDENTIALS) {
-    const credPath = path.resolve(env.GOOGLE_APPLICATION_CREDENTIALS);
+  if (env.FIREBASE_SERVICE_ACCOUNT) {
+    const credPath = path.resolve(env.FIREBASE_SERVICE_ACCOUNT);
     if (!fs.existsSync(credPath)) {
       console.warn(`Firebase credentials file not found: ${credPath}`);
       return;
@@ -21,7 +21,7 @@ export function initializeFirebase() {
     firebaseInitialized = true;
     console.log('Firebase Admin initialized');
   } else {
-    console.warn('GOOGLE_APPLICATION_CREDENTIALS not set — push notifications disabled');
+    console.warn('FIREBASE_SERVICE_ACCOUNT not set — push notifications disabled');
   }
 }
 

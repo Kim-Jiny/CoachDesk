@@ -37,7 +37,8 @@ export const env = {
   MINIO_SECRET_KEY: getOptionalEnv('MINIO_SECRET_KEY', 'minioadmin'),
   MINIO_BUCKET: getOptionalEnv('MINIO_BUCKET', 'coachdesk'),
   STORAGE_PUBLIC_URL: getOptionalEnv('STORAGE_PUBLIC_URL', 'http://localhost:9000/coachdesk'),
-  GOOGLE_APPLICATION_CREDENTIALS: process.env.GOOGLE_APPLICATION_CREDENTIALS || '',
+  FIREBASE_SERVICE_ACCOUNT:
+    process.env.FIREBASE_SERVICE_ACCOUNT || process.env.GOOGLE_APPLICATION_CREDENTIALS || '',
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || '',
   GOOGLE_ANDROID_CLIENT_ID: process.env.GOOGLE_ANDROID_CLIENT_ID || '',
   GOOGLE_IOS_CLIENT_ID: process.env.GOOGLE_IOS_CLIENT_ID || '',
