@@ -41,9 +41,6 @@ ALTER TABLE "CenterJoinRequest" ADD CONSTRAINT "CenterJoinRequest_userId_fkey" F
 ALTER TABLE "CenterJoinRequest" DROP CONSTRAINT IF EXISTS "CenterJoinRequest_organizationId_fkey";
 ALTER TABLE "CenterJoinRequest" ADD CONSTRAINT "CenterJoinRequest_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
--- Migrate existing role data: ADMIN -> MANAGER, COACH -> STAFF
-UPDATE "OrgMembership" SET "role" = 'MANAGER' WHERE "role" = 'ADMIN';
-UPDATE "OrgMembership" SET "role" = 'STAFF' WHERE "role" = 'COACH';
-
--- Update default for OrgMembership.role
-ALTER TABLE "OrgMembership" ALTER COLUMN "role" SET DEFAULT 'STAFF';
+-- NOTE: ADMIN→MANAGER / COACH→STAFF 데이터 마이그레이션 및 default 변경은
+-- 별도 마이그레이션(20260413100500_migrate_orgrole_values)에서 수행한다.
+-- Postgres는 ALTER TYPE ADD VALUE 로 추가된 enum 값을 같은 트랜잭션 안에서 사용할 수 없다.
