@@ -47,8 +47,9 @@ class AuthState {
       status: status ?? this.status,
       user: user ?? this.user,
       centers: centers ?? this.centers,
-      selectedCenter:
-          clearSelectedCenter ? null : (selectedCenter ?? this.selectedCenter),
+      selectedCenter: clearSelectedCenter
+          ? null
+          : (selectedCenter ?? this.selectedCenter),
       isLoading: isLoading ?? this.isLoading,
       error: error,
     );
@@ -319,7 +320,9 @@ class AuthNotifier extends Notifier<AuthState> {
   // ─── Center Management ────────────────────────────────────
 
   Future<void> selectCenter(String organizationId) async {
-    final center = state.centers.where((c) => c.id == organizationId).firstOrNull;
+    final center = state.centers
+        .where((c) => c.id == organizationId)
+        .firstOrNull;
     if (center == null) return;
 
     await ApiClient.saveOrgId(center.id);
@@ -327,16 +330,12 @@ class AuthNotifier extends Notifier<AuthState> {
     _syncWidgets();
   }
 
-  Future<bool> createCenter({
-    required String name,
-    String? description,
-  }) async {
+  Future<bool> createCenter({required String name, String? description}) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      final response = await _dio.post('/centers', data: {
-        'name': name,
-        if (description != null) 'description': description,
-      });
+      final data = <String, dynamic>{'name': name};
+      if (description != null) data['description'] = description;
+      final response = await _dio.post('/centers', data: data);
 
       final newCenter = Organization.fromJson(response.data);
       final updatedCenters = [...state.centers, newCenter];
@@ -356,13 +355,15 @@ class AuthNotifier extends Notifier<AuthState> {
     }
   }
 
-  Future<CenterJoinRequest?> requestJoinCenter(String inviteCode, {String? message}) async {
+  Future<CenterJoinRequest?> requestJoinCenter(
+    String inviteCode, {
+    String? message,
+  }) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      final response = await _dio.post('/centers/join-request', data: {
-        'inviteCode': inviteCode,
-        if (message != null) 'message': message,
-      });
+      final data = <String, dynamic>{'inviteCode': inviteCode};
+      if (message != null) data['message'] = message;
+      final response = await _dio.post('/centers/join-request', data: data);
 
       state = state.copyWith(isLoading: false);
       return CenterJoinRequest.fromJson(response.data);
@@ -391,7 +392,7 @@ class AuthNotifier extends Notifier<AuthState> {
       final currentSelectedId = state.selectedCenter?.id;
       final selected = currentSelectedId != null
           ? centers.where((c) => c.id == currentSelectedId).firstOrNull ??
-              _autoSelectCenter(centers)
+                _autoSelectCenter(centers)
           : _autoSelectCenter(centers);
       if (selected != null) await ApiClient.saveOrgId(selected.id);
 
@@ -402,10 +403,7 @@ class AuthNotifier extends Notifier<AuthState> {
         isLoading: false,
       );
     } catch (_) {
-      state = state.copyWith(
-        isLoading: false,
-        error: '센터 목록을 불러오지 못했습니다',
-      );
+      state = state.copyWith(isLoading: false, error: '센터 목록을 불러오지 못했습니다');
     }
   }
 
@@ -430,12 +428,61 @@ class AuthNotifier extends Notifier<AuthState> {
     _syncWidgets();
   }
 
-  Future<bool> updateProfile({String? name, String? phone}) async {
+  Future<bool> updateProfile({
+    String? name,
+    String? phone,
+    String? reservationNoticeImageBase64,
+    String? reservationNoticeImageFileName,
+    String? reservationNoticeImageContentType,
+    String? bookingMode,
+    String? reservationPolicy,
+    String? reservationNoticeText,
+    String? reservationNoticeImageUrl,
+    bool clearReservationNoticeText = false,
+    bool clearReservationNoticeImage = false,
+    int? reservationOpenDaysBefore,
+    int? reservationOpenHoursBefore,
+    int? reservationCancelDeadlineMinutes,
+  }) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
       final data = <String, dynamic>{};
       if (name != null) data['name'] = name;
       if (phone != null) data['phone'] = phone;
+      if (bookingMode != null) data['bookingMode'] = bookingMode;
+      if (reservationPolicy != null) {
+        data['reservationPolicy'] = reservationPolicy;
+      }
+      if (clearReservationNoticeText || reservationNoticeText != null) {
+        data['reservationNoticeText'] = reservationNoticeText;
+      }
+      if (clearReservationNoticeImage || reservationNoticeImageUrl != null) {
+        data['reservationNoticeImageUrl'] = reservationNoticeImageUrl;
+      }
+      if (reservationOpenDaysBefore != null) {
+        data['reservationOpenDaysBefore'] = reservationOpenDaysBefore;
+      }
+      if (reservationOpenHoursBefore != null) {
+        data['reservationOpenHoursBefore'] = reservationOpenHoursBefore;
+      }
+      if (reservationCancelDeadlineMinutes != null) {
+        data['reservationCancelDeadlineMinutes'] =
+            reservationCancelDeadlineMinutes;
+      }
+
+      if (reservationNoticeImageBase64 != null &&
+          reservationNoticeImageFileName != null &&
+          reservationNoticeImageContentType != null) {
+        final uploadResponse = await _dio.post(
+          '/auth/profile/reservation-notice-image',
+          data: {
+            'fileName': reservationNoticeImageFileName,
+            'contentType': reservationNoticeImageContentType,
+            'base64Data': reservationNoticeImageBase64,
+          },
+        );
+        data['reservationNoticeImageUrl'] = uploadResponse.data['imageUrl'];
+      }
 
       final response = await _dio.put('/auth/profile', data: data);
       final updatedUser = User.fromJson(response.data as Map<String, dynamic>);

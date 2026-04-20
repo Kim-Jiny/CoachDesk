@@ -1,6 +1,9 @@
 class Package {
   final String id;
   final String organizationId;
+  final String? coachId;
+  final String? coachName;
+  final String scope;
   final String name;
   final int totalSessions;
   final int price;
@@ -14,6 +17,9 @@ class Package {
   const Package({
     required this.id,
     required this.organizationId,
+    this.coachId,
+    this.coachName,
+    this.scope = 'CENTER',
     required this.name,
     required this.totalSessions,
     required this.price,
@@ -29,6 +35,13 @@ class Package {
     return Package(
       id: json['id'] as String,
       organizationId: json['organizationId'] as String,
+      coachId: json['coachId'] as String?,
+      coachName:
+          json['coachName'] as String? ??
+          (json['coach'] as Map<String, dynamic>?)?['name'] as String?,
+      scope:
+          json['scope'] as String? ??
+          (json['coachId'] == null ? 'CENTER' : 'ADMIN'),
       name: json['name'] as String,
       totalSessions: json['totalSessions'] as int,
       price: json['price'] as int,
@@ -48,7 +61,11 @@ class Package {
     'validDays': validDays,
     'isActive': isActive,
     'isPublic': isPublic,
+    'scope': scope,
   };
+
+  bool get isAdminScoped => scope == 'ADMIN';
+  String get scopeLabel => isAdminScoped ? '관리자 패키지' : '센터 패키지';
 }
 
 class MemberPackage {

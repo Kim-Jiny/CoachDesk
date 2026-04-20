@@ -6,9 +6,12 @@ import 'package:intl/intl.dart';
 import '../../core/theme.dart';
 import '../../providers/package_provider.dart';
 import '../../widgets/common.dart';
+import 'package_form_screen.dart';
 
 class PackageListScreen extends ConsumerStatefulWidget {
-  const PackageListScreen({super.key});
+  final String initialScope;
+
+  const PackageListScreen({super.key, this.initialScope = 'CENTER'});
 
   @override
   ConsumerState<PackageListScreen> createState() => _PackageListScreenState();
@@ -17,10 +20,12 @@ class PackageListScreen extends ConsumerStatefulWidget {
 class _PackageListScreenState extends ConsumerState<PackageListScreen> {
   final _searchController = TextEditingController();
   String _statusFilter = 'all';
+  late String _scopeFilter;
 
   @override
   void initState() {
     super.initState();
+    _scopeFilter = widget.initialScope;
     Future.microtask(() => ref.read(packageProvider.notifier).fetchPackages());
   }
 
@@ -35,6 +40,7 @@ class _PackageListScreenState extends ConsumerState<PackageListScreen> {
     final pkgState = ref.watch(packageProvider);
     final formatter = NumberFormat('#,###');
     final filteredPackages = pkgState.packages.where((pkg) {
+      final matchesScope = pkg.scope == _scopeFilter;
       final matchesStatus = switch (_statusFilter) {
         'active' => pkg.isActive,
         'inactive' => !pkg.isActive,
@@ -44,11 +50,12 @@ class _PackageListScreenState extends ConsumerState<PackageListScreen> {
       final matchesQuery = query.isEmpty
           ? true
           : pkg.name.toLowerCase().contains(query);
-      return matchesStatus && matchesQuery;
+      return matchesScope && matchesStatus && matchesQuery;
     }).toList();
+    final scopeLabel = _scopeFilter == 'ADMIN' ? '관리자 패키지' : '센터 패키지';
 
     return Scaffold(
-      appBar: AppBar(title: const Text('패키지 관리')),
+      appBar: AppBar(title: Text(scopeLabel)),
       body: pkgState.isLoading
           ? const ShimmerLoading(style: ShimmerStyle.card, itemCount: 5)
           : pkgState.packages.isEmpty
@@ -56,7 +63,7 @@ class _PackageListScreenState extends ConsumerState<PackageListScreen> {
               icon: Icons.inventory_2_outlined,
               message: '등록된 패키지가 없습니다',
               actionLabel: '패키지 등록',
-              onAction: () => context.push('/packages/form'),
+              onAction: _openCreateForm,
             )
           : RefreshIndicator(
               onRefresh: () =>
@@ -105,6 +112,18 @@ class _PackageListScreenState extends ConsumerState<PackageListScreen> {
                     child: Row(
                       children: [
                         _FilterChip(
+                          label: '센터 패키지',
+                          selected: _scopeFilter == 'CENTER',
+                          onTap: () => setState(() => _scopeFilter = 'CENTER'),
+                        ),
+                        const SizedBox(width: 8),
+                        _FilterChip(
+                          label: '관리자 패키지',
+                          selected: _scopeFilter == 'ADMIN',
+                          onTap: () => setState(() => _scopeFilter = 'ADMIN'),
+                        ),
+                        const SizedBox(width: 12),
+                        _FilterChip(
                           label: '전체',
                           selected: _statusFilter == 'all',
                           onTap: () => setState(() => _statusFilter = 'all'),
@@ -134,11 +153,16 @@ class _PackageListScreenState extends ConsumerState<PackageListScreen> {
                   if (filteredPackages.isEmpty)
                     EmptyState(
                       icon: Icons.search_off_rounded,
-                      message: '조건에 맞는 패키지가 없습니다',
-                      actionLabel: '필터 초기화',
+                      message: '조건에 맞는 $scopeLabel가 없습니다',
+                      actionLabel: '새 $scopeLabel 등록',
                       onAction: () {
-                        _searchController.clear();
-                        setState(() => _statusFilter = 'all');
+                        if (_searchController.text.isNotEmpty ||
+                            _statusFilter != 'all') {
+                          _searchController.clear();
+                          setState(() => _statusFilter = 'all');
+                          return;
+                        }
+                        _openCreateForm();
                       },
                     )
                   else
@@ -146,8 +170,10 @@ class _PackageListScreenState extends ConsumerState<PackageListScreen> {
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 10),
                         child: GestureDetector(
-                          onTap: () =>
-                              context.push('/packages/form', extra: pkg),
+                          onTap: () => context.push(
+                            '/packages/form',
+                            extra: PackageFormArgs(package: pkg),
+                          ),
                           child: Container(
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
@@ -190,7 +216,7 @@ class _PackageListScreenState extends ConsumerState<PackageListScreen> {
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
-                                        '${pkg.totalSessions}회  ·  ${formatter.format(pkg.price)}원'
+                                        '${pkg.scopeLabel}  ·  ${pkg.totalSessions}회  ·  ${formatter.format(pkg.price)}원'
                                         '${pkg.validDays != null ? '  ·  ${pkg.validDays}일' : ''}',
                                         style: TextStyle(
                                           fontSize: 13,
@@ -211,6 +237,12 @@ class _PackageListScreenState extends ConsumerState<PackageListScreen> {
                                         spacing: 6,
                                         runSpacing: 6,
                                         children: [
+                                          StatusBadge(
+                                            label: pkg.scopeLabel,
+                                            color: pkg.isAdminScoped
+                                                ? Colors.deepOrange
+                                                : Colors.teal,
+                                          ),
                                           StatusBadge(
                                             label: pkg.isActive ? '활성' : '비활성',
                                             color: pkg.isActive
@@ -243,9 +275,16 @@ class _PackageListScreenState extends ConsumerState<PackageListScreen> {
               ),
             ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => context.push('/packages/form'),
+        onPressed: _openCreateForm,
         child: const Icon(Icons.add),
       ),
+    );
+  }
+
+  void _openCreateForm() {
+    context.push(
+      '/packages/form',
+      extra: PackageFormArgs(initialScope: _scopeFilter),
     );
   }
 }

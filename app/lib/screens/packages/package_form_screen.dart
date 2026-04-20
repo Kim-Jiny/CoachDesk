@@ -5,9 +5,22 @@ import 'package:go_router/go_router.dart';
 import '../../models/package.dart';
 import '../../providers/package_provider.dart';
 
+class PackageFormArgs {
+  final Package? package;
+  final String initialScope;
+
+  const PackageFormArgs({this.package, this.initialScope = 'CENTER'});
+}
+
 class PackageFormScreen extends ConsumerStatefulWidget {
   final Package? package;
-  const PackageFormScreen({super.key, this.package});
+  final String initialScope;
+
+  const PackageFormScreen({
+    super.key,
+    this.package,
+    this.initialScope = 'CENTER',
+  });
 
   @override
   ConsumerState<PackageFormScreen> createState() => _PackageFormScreenState();
@@ -21,6 +34,7 @@ class _PackageFormScreenState extends ConsumerState<PackageFormScreen> {
   late final TextEditingController _validDaysController;
   late bool _isActive;
   late bool _isPublic;
+  late String _scope;
 
   bool get isEditing => widget.package != null;
 
@@ -39,6 +53,7 @@ class _PackageFormScreenState extends ConsumerState<PackageFormScreen> {
     );
     _isActive = widget.package?.isActive ?? true;
     _isPublic = widget.package?.isPublic ?? false;
+    _scope = widget.package?.scope ?? widget.initialScope;
   }
 
   @override
@@ -59,6 +74,7 @@ class _PackageFormScreenState extends ConsumerState<PackageFormScreen> {
       'price': int.parse(_priceController.text.trim()),
       'isActive': _isActive,
       'isPublic': _isPublic,
+      'scope': _scope,
       if (_validDaysController.text.trim().isNotEmpty)
         'validDays': int.parse(_validDaysController.text.trim()),
     };
@@ -90,6 +106,38 @@ class _PackageFormScreenState extends ConsumerState<PackageFormScreen> {
                   hintText: '예: PT 10회',
                 ),
                 validator: (v) => (v == null || v.isEmpty) ? '이름을 입력하세요' : null,
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '패키지 구분',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 8),
+                    _ScopeOption(
+                      title: '센터 패키지',
+                      subtitle: '센터 공통으로 쓰는 패키지입니다',
+                      selected: _scope == 'CENTER',
+                      onTap: () => setState(() => _scope = 'CENTER'),
+                    ),
+                    const SizedBox(height: 8),
+                    _ScopeOption(
+                      title: '관리자 패키지',
+                      subtitle: '내 관리자 계정 전용 패키지입니다',
+                      selected: _scope == 'ADMIN',
+                      onTap: () => setState(() => _scope = 'ADMIN'),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 16),
               TextFormField(
@@ -173,6 +221,67 @@ class _PackageFormScreenState extends ConsumerState<PackageFormScreen> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ScopeOption extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ScopeOption({
+    required this.title,
+    required this.subtitle,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final color = selected
+        ? Theme.of(context).colorScheme.primary
+        : Colors.grey.shade400;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: selected ? color : Colors.grey.shade200),
+          color: selected ? color.withValues(alpha: 0.06) : Colors.white,
+        ),
+        child: Row(
+          children: [
+            Icon(
+              selected
+                  ? Icons.radio_button_checked_rounded
+                  : Icons.radio_button_unchecked_rounded,
+              color: color,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

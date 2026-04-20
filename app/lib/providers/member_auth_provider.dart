@@ -59,6 +59,8 @@ class MemberCoach {
 class MemberReservationNotice {
   final String organizationId;
   final String organizationName;
+  final String? coachId;
+  final String? coachName;
   final String? text;
   final String? imageUrl;
   final int reservationOpenDaysBefore;
@@ -68,6 +70,8 @@ class MemberReservationNotice {
   const MemberReservationNotice({
     required this.organizationId,
     required this.organizationName,
+    this.coachId,
+    this.coachName,
     this.text,
     this.imageUrl,
     this.reservationOpenDaysBefore = 30,
@@ -83,6 +87,8 @@ class MemberReservationNotice {
     return MemberReservationNotice(
       organizationId: json['organizationId'] as String,
       organizationName: json['organizationName'] as String? ?? '',
+      coachId: json['coachId'] as String?,
+      coachName: json['coachName'] as String?,
       text: json['reservationNoticeText'] as String?,
       imageUrl: json['reservationNoticeImageUrl'] as String?,
       reservationOpenDaysBefore:
@@ -345,7 +351,11 @@ class MemberAuthNotifier extends Notifier<MemberAuthState> {
     }
   }
 
-  Future<List<MemberSlot>> fetchSlots(String orgId, String date, {String? coachId}) async {
+  Future<List<MemberSlot>> fetchSlots(
+    String orgId,
+    String date, {
+    String? coachId,
+  }) async {
     try {
       final params = <String, dynamic>{'date': date};
       if (coachId != null) params['coachId'] = coachId;
@@ -361,10 +371,16 @@ class MemberAuthNotifier extends Notifier<MemberAuthState> {
     }
   }
 
-  Future<MemberReservationNotice?> fetchReservationNotice(String orgId) async {
+  Future<MemberReservationNotice?> fetchReservationNotice(
+    String orgId, {
+    String? coachId,
+  }) async {
     try {
+      final queryParameters = <String, dynamic>{};
+      if (coachId != null) queryParameters['coachId'] = coachId;
       final response = await _dio.get(
         '/auth/member/studios/$orgId/reservation-notice',
+        queryParameters: queryParameters,
       );
       return MemberReservationNotice.fromJson(
         response.data as Map<String, dynamic>,

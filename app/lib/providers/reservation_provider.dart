@@ -44,6 +44,16 @@ class ReservationCreateResult {
   });
 }
 
+class ReservationActionResult {
+  final bool success;
+  final String? error;
+
+  const ReservationActionResult({
+    required this.success,
+    this.error,
+  });
+}
+
 class ReservationNotifier extends Notifier<ReservationState> {
   void _syncWidgets() {
     unawaited(HomeWidgetService.syncAll());
@@ -185,7 +195,7 @@ class ReservationNotifier extends Notifier<ReservationState> {
     }
   }
 
-  Future<bool> updateMemo(
+  Future<ReservationActionResult> updateMemo(
     String id, {
     required String quickMemo,
     required String memo,
@@ -195,9 +205,36 @@ class ReservationNotifier extends Notifier<ReservationState> {
         '/reservations/$id/memo',
         data: {'quickMemo': quickMemo, 'memo': memo},
       );
-      return true;
+      return const ReservationActionResult(success: true);
+    } on DioException catch (e) {
+      return ReservationActionResult(
+        success: false,
+        error: e.response?.data?['error'] as String?,
+      );
     } catch (_) {
-      return false;
+      return const ReservationActionResult(success: false);
+    }
+  }
+
+  Future<ReservationActionResult> adjustTime(
+    String id, {
+    required int delayMinutes,
+    bool force = false,
+  }) async {
+    try {
+      await _dio.patch(
+        '/reservations/$id/delay',
+        data: {'delayMinutes': delayMinutes, 'force': force},
+      );
+      _syncWidgets();
+      return const ReservationActionResult(success: true);
+    } on DioException catch (e) {
+      return ReservationActionResult(
+        success: false,
+        error: e.response?.data?['error'] as String?,
+      );
+    } catch (_) {
+      return const ReservationActionResult(success: false);
     }
   }
 }

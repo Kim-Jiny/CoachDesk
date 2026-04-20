@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { randomUUID } from 'crypto';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../utils/jwt';
@@ -61,6 +62,7 @@ import { serializeReservation } from '../features/reservation/serializer';
 import {
   shouldSendPushForType,
 } from '../utils/notification-preferences';
+import { uploadFile } from '../utils/storage';
 
 const router = Router();
 
@@ -153,18 +155,71 @@ const updateProfileSchema = z.object({
   name: z.string().min(1).optional(),
   phone: z.string().optional(),
   profileImage: z.string().optional(),
+  bookingMode: z.enum(['PRIVATE', 'PUBLIC']).optional(),
+  reservationPolicy: z.enum(['AUTO_CONFIRM', 'REQUEST_APPROVAL']).optional(),
+  reservationNoticeText: z.string().max(5000).nullable().optional(),
+  reservationNoticeImageUrl: z.string().url().nullable().optional(),
+  reservationOpenDaysBefore: z.number().int().min(0).max(365).optional(),
+  reservationOpenHoursBefore: z.number().int().min(0).max(23).optional(),
+  reservationCancelDeadlineMinutes: z.number().int().min(0).max(7 * 24 * 60).optional(),
+});
+
+const uploadReservationNoticeImageSchema = z.object({
+  fileName: z.string().min(1).max(255),
+  contentType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
+  base64Data: z.string().min(1),
 });
 
 router.put('/profile', authMiddleware, async (req: Request, res: Response) => {
   try {
     const body = updateProfileSchema.parse(req.body);
-    res.json(await updateUserProfile({ userId: req.user!.userId, ...body }));
+    res.json(await updateUserProfile({
+      userId: req.user!.userId,
+      ...body,
+      reservationNoticeText:
+        body.reservationNoticeText?.trim() ?? body.reservationNoticeText,
+    }));
   } catch (err) {
     if (err instanceof z.ZodError) {
       res.status(400).json({ error: 'Validation error', details: err.errors });
       return;
     }
     console.error('Update profile error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/profile/reservation-notice-image', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const body = uploadReservationNoticeImageSchema.parse(req.body);
+    const buffer = Buffer.from(body.base64Data, 'base64');
+    if (buffer.length === 0) {
+      res.status(400).json({ error: 'Image data required' });
+      return;
+    }
+
+    if (buffer.length > 8 * 1024 * 1024) {
+      res.status(400).json({ error: '이미지는 8MB 이하만 업로드할 수 있습니다' });
+      return;
+    }
+
+    const safeFileName = body.fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const extension = safeFileName.includes('.') ? safeFileName.split('.').pop() : 'jpg';
+    const objectName = `users/${req.user!.userId}/reservation-notices/${randomUUID()}.${extension}`;
+    const imageUrl = await uploadFile(objectName, buffer, body.contentType);
+
+    await prisma.user.update({
+      where: { id: req.user!.userId },
+      data: { reservationNoticeImageUrl: imageUrl },
+    });
+
+    res.json({ imageUrl });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: err.errors });
+      return;
+    }
+    console.error('Upload user reservation notice image error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -298,6 +353,7 @@ router.get('/member/studios/:orgId/reservation-notice', authMiddleware, async (r
     res.json(await getReservationNotice({
       memberAccountId: req.user!.userId,
       organizationId: req.params.orgId as string,
+      coachId: req.query.coachId as string | undefined,
     }));
   } catch (err) {
     if (err instanceof MemberAccountQueryError) {

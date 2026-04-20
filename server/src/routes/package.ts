@@ -23,7 +23,10 @@ router.get('/', async (req: Request, res: Response) => {
   try {
     const orgId = await requireCurrentOrgId(req, res);
     if (!orgId) return;
-    res.json(await listPackagesWithStats(orgId));
+    res.json(await listPackagesWithStats({
+      organizationId: orgId,
+      userId: req.user!.userId,
+    }));
   } catch (err) {
     console.error('List packages error:', err);
     res.status(500).json({ error: 'Internal server error' });
@@ -38,18 +41,27 @@ const createPackageSchema = z.object({
   validDays: z.number().min(1).optional(),
   isActive: z.boolean().optional(),
   isPublic: z.boolean().optional(),
+  scope: z.enum(['CENTER', 'ADMIN']).default('CENTER'),
 });
 
 router.post('/', async (req: Request, res: Response) => {
   try {
     const orgId = await requireCurrentOrgId(req, res);
     if (!orgId) return;
-    if (!(await requireOrgRole(req, res, orgId, ['OWNER', 'MANAGER']))) return;
+    const role = await requireOrgRole(req, res, orgId, ['OWNER', 'MANAGER', 'STAFF']);
+    if (!role) return;
 
     const body = createPackageSchema.parse(req.body);
+    const { scope, ...packageData } = body;
+    if (scope === 'CENTER' && role === 'STAFF') {
+      res.status(403).json({ error: '센터 패키지는 소유자 또는 매니저만 만들 수 있습니다' });
+      return;
+    }
     const pkg = await createPackage({
       organizationId: orgId,
-      ...body,
+      scope,
+      coachId: scope === 'ADMIN' ? req.user!.userId : null,
+      ...packageData,
     });
 
     res.status(201).json(pkg);
@@ -70,13 +82,27 @@ router.put('/:id', async (req: Request, res: Response) => {
   try {
     const orgId = await requireCurrentOrgId(req, res);
     if (!orgId) return;
-    if (!(await requireOrgRole(req, res, orgId, ['OWNER', 'MANAGER']))) return;
+    const role = await requireOrgRole(req, res, orgId, ['OWNER', 'MANAGER', 'STAFF']);
+    if (!role) return;
 
     const body = updatePackageSchema.parse(req.body);
+    const { scope, ...packageData } = body;
+    if (scope === 'CENTER' && role === 'STAFF') {
+      res.status(403).json({ error: '센터 패키지는 소유자 또는 매니저만 수정할 수 있습니다' });
+      return;
+    }
     const pkg = await updatePackage({
       organizationId: orgId,
+      userId: req.user!.userId,
+      canManageCenterPackage: role !== 'STAFF',
       packageId: req.params.id as string,
-      ...body,
+      scope,
+      coachId: scope === undefined
+        ? undefined
+        : scope === 'ADMIN'
+          ? req.user!.userId
+          : null,
+      ...packageData,
     });
     res.json(pkg);
   } catch (err) {
@@ -102,11 +128,14 @@ router.post('/assign', async (req: Request, res: Response) => {
   try {
     const orgId = await requireCurrentOrgId(req, res);
     if (!orgId) return;
-    if (!(await requireOrgRole(req, res, orgId, ['OWNER', 'MANAGER']))) return;
+    const role = await requireOrgRole(req, res, orgId, ['OWNER', 'MANAGER', 'STAFF']);
+    if (!role) return;
 
     const body = assignPackageSchema.parse(req.body);
     const memberPackage = await assignPackageToMember({
       organizationId: orgId,
+      userId: req.user!.userId,
+      canManageCenterPackage: role !== 'STAFF',
       ...body,
     });
 

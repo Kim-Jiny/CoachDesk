@@ -10,8 +10,13 @@ import '../../widgets/common.dart';
 
 class RevenueReportScreen extends ConsumerStatefulWidget {
   final DateTime? initialMonth;
+  final String reportScope;
 
-  const RevenueReportScreen({super.key, this.initialMonth});
+  const RevenueReportScreen({
+    super.key,
+    this.initialMonth,
+    this.reportScope = 'center',
+  });
 
   @override
   ConsumerState<RevenueReportScreen> createState() =>
@@ -22,6 +27,7 @@ class _RevenueReportScreenState extends ConsumerState<RevenueReportScreen> {
   late DateTime _selectedMonth;
   Map<String, dynamic>? _report;
   bool _isLoading = false;
+  bool get _isAdminScope => widget.reportScope == 'admin';
 
   @override
   void initState() {
@@ -63,6 +69,7 @@ class _RevenueReportScreenState extends ConsumerState<RevenueReportScreen> {
         queryParameters: {
           'startDate': DateFormat('yyyy-MM-dd').format(_startDate),
           'endDate': DateFormat('yyyy-MM-dd').format(_endDate),
+          if (_isAdminScope) 'scope': 'admin',
         },
       );
       setState(() {
@@ -81,7 +88,7 @@ class _RevenueReportScreenState extends ConsumerState<RevenueReportScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('매출 리포트'),
+        title: Text(_isAdminScope ? '관리자 매출 통계' : '센터 매출 통계'),
         actions: [
           IconButton(
             tooltip: hideRevenueAmount ? '금액 표시' : '금액 숨기기',
@@ -206,7 +213,9 @@ class _RevenueReportScreenState extends ConsumerState<RevenueReportScreen> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                '${_report!['count'] ?? 0}건 등록',
+                                _isAdminScope
+                                    ? '${_report!['count'] ?? 0}건 내 패키지 등록'
+                                    : '${_report!['count'] ?? 0}건 등록',
                                 style: TextStyle(
                                   color: Colors.white.withValues(alpha: 0.7),
                                 ),
@@ -240,9 +249,11 @@ class _RevenueReportScreenState extends ConsumerState<RevenueReportScreen> {
                         ),
                         const SizedBox(height: 8),
                         if ((_report!['details'] as List? ?? []).isEmpty)
-                          const EmptyState(
+                          EmptyState(
                             icon: Icons.receipt_long_outlined,
-                            message: '해당 월에 등록된 패키지가 없습니다',
+                            message: _isAdminScope
+                                ? '해당 월에 내 관리자 패키지 매출이 없습니다'
+                                : '해당 월에 등록된 패키지가 없습니다',
                           )
                         else
                           ...(_report!['details'] as List? ?? []).map((d) {

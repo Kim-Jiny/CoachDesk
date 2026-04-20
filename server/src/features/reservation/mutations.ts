@@ -195,21 +195,35 @@ export async function delayReservation(params: {
   }
 
   const memoFields = decodeMemoFields(existingReservation.memo);
-  const updated = await prisma.reservation.update({
-    where: { id: existingReservation.id },
-    data: {
-      startTime: newStartTime,
-      endTime: newEndTime,
-      memo: encodeMemoFields({
-        quickMemo: memoFields.quickMemo,
-        memo: memoFields.memo,
-        delayMinutes: (memoFields.delayMinutes ?? 0) + params.delayMinutes,
-        originalStartTime:
-          memoFields.originalStartTime ?? existingReservation.startTime,
-        originalEndTime: memoFields.originalEndTime ?? existingReservation.endTime,
-      }),
-    },
-    include: reservationRelations,
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.scheduleOverride.create({
+      data: {
+        organizationId: params.organizationId,
+        coachId: existingReservation.coachId,
+        date: existingReservation.date,
+        type: 'CLOSED',
+        startTime: existingReservation.startTime,
+        endTime: existingReservation.endTime,
+      },
+    });
+
+    return tx.reservation.update({
+      where: { id: existingReservation.id },
+      data: {
+        startTime: newStartTime,
+        endTime: newEndTime,
+        memo: encodeMemoFields({
+          quickMemo: memoFields.quickMemo,
+          memo: memoFields.memo,
+          delayMinutes: (memoFields.delayMinutes ?? 0) + params.delayMinutes,
+          originalStartTime:
+            memoFields.originalStartTime ?? existingReservation.startTime,
+          originalEndTime:
+            memoFields.originalEndTime ?? existingReservation.endTime,
+        }),
+      },
+      include: reservationRelations,
+    });
   });
 
   return {

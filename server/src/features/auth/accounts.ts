@@ -137,6 +137,13 @@ export async function updateUserProfile(params: {
   name?: string;
   phone?: string;
   profileImage?: string;
+  bookingMode?: 'PRIVATE' | 'PUBLIC';
+  reservationPolicy?: 'AUTO_CONFIRM' | 'REQUEST_APPROVAL';
+  reservationNoticeText?: string | null;
+  reservationNoticeImageUrl?: string | null;
+  reservationOpenDaysBefore?: number;
+  reservationOpenHoursBefore?: number;
+  reservationCancelDeadlineMinutes?: number;
 }) {
   const user = await prisma.user.update({
     where: { id: params.userId },
@@ -144,6 +151,13 @@ export async function updateUserProfile(params: {
       name: params.name,
       phone: params.phone,
       profileImage: params.profileImage,
+      bookingMode: params.bookingMode,
+      reservationPolicy: params.reservationPolicy,
+      reservationNoticeText: params.reservationNoticeText,
+      reservationNoticeImageUrl: params.reservationNoticeImageUrl,
+      reservationOpenDaysBefore: params.reservationOpenDaysBefore,
+      reservationOpenHoursBefore: params.reservationOpenHoursBefore,
+      reservationCancelDeadlineMinutes: params.reservationCancelDeadlineMinutes,
     },
   });
 
@@ -189,6 +203,13 @@ export async function deleteUserAccount(userId: string) {
         name: '삭제된 관리자',
         phone: null,
         profileImage: null,
+        bookingMode: 'PRIVATE',
+        reservationPolicy: 'AUTO_CONFIRM',
+        reservationNoticeText: null,
+        reservationNoticeImageUrl: null,
+        reservationOpenDaysBefore: 30,
+        reservationOpenHoursBefore: 0,
+        reservationCancelDeadlineMinutes: 120,
         fcmToken: null,
         notificationPreferences: null,
         googleId: null,

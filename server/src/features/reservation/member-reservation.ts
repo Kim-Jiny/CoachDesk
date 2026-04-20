@@ -5,11 +5,7 @@ import {
   getKstDayOfWeek,
   parseDateOnly,
 } from '../../utils/kst-date';
-import {
-  findFirstScheduleCompat,
-  findFirstScheduleOverrideCompat,
-  findScheduleOverridesCompat,
-} from '../../utils/schedule-access';
+import { findFirstScheduleCompat, findScheduleOverridesCompat } from '../../utils/schedule-access';
 import { isTimeRangeClosed } from '../../utils/slot-blocking';
 import { findGeneratedSlot } from '../../utils/slot-service';
 import { isOverlappingTimeRange } from '../shared/time-range';
@@ -46,7 +42,7 @@ type ReserveMemberSlotInput = {
 };
 
 export async function reserveMemberSlot(input: ReserveMemberSlotInput) {
-  const [member, organization] = await Promise.all([
+  const [member, coach] = await Promise.all([
     prisma.member.findFirst({
       where: {
         organizationId: input.organizationId,
@@ -54,12 +50,19 @@ export async function reserveMemberSlot(input: ReserveMemberSlotInput) {
         status: 'ACTIVE',
       },
     }),
-    prisma.organization.findUnique({
-      where: { id: input.organizationId },
+    prisma.user.findFirst({
+      where: {
+        id: input.coachId,
+        memberships: {
+          some: { organizationId: input.organizationId },
+        },
+      },
       select: {
+        bookingMode: true,
         reservationPolicy: true,
         reservationOpenDaysBefore: true,
         reservationOpenHoursBefore: true,
+        reservationCancelDeadlineMinutes: true,
       },
     }),
   ]);
@@ -67,44 +70,26 @@ export async function reserveMemberSlot(input: ReserveMemberSlotInput) {
   if (!member) {
     throw new MemberReservationError('NOT_MEMBER');
   }
-  if (!organization) {
+  if (!coach) {
     throw new MemberReservationError('ORG_NOT_FOUND');
   }
 
   if (
     !canReserveAt(input.date, input.startTime, {
-      reservationOpenDaysBefore: organization.reservationOpenDaysBefore,
-      reservationOpenHoursBefore: organization.reservationOpenHoursBefore,
+      reservationOpenDaysBefore: coach.reservationOpenDaysBefore,
+      reservationOpenHoursBefore: coach.reservationOpenHoursBefore,
       reservationCancelDeadlineMinutes: 0,
     })
   ) {
     throw new MemberReservationError('RESERVE_WINDOW_CLOSED');
   }
 
+  if (coach.bookingMode !== 'PUBLIC') {
+    throw new MemberReservationError('INVALID_SLOT');
+  }
+
   const targetDate = parseDateOnly(input.date);
   const dayOfWeek = getKstDayOfWeek(input.date);
-
-  const override = await findFirstScheduleOverrideCompat({
-    organizationId: input.organizationId,
-    coachId: input.coachId,
-    date: targetDate,
-  });
-
-  if (override?.type === 'CLOSED') {
-    throw new MemberReservationError('DATE_CLOSED');
-  }
-
-  const closedOverrides = await findScheduleOverridesCompat({
-    organizationId: input.organizationId,
-    coachId: input.coachId,
-    date: targetDate,
-  });
-  const blockedByOverride = closedOverrides.some((candidate) =>
-    isTimeRangeClosed(candidate, input.startTime, input.endTime),
-  );
-  if (blockedByOverride) {
-    throw new MemberReservationError('TIME_CLOSED');
-  }
 
   const matchedSlot = await findGeneratedSlot({
     organizationId: input.organizationId,
@@ -118,7 +103,25 @@ export async function reserveMemberSlot(input: ReserveMemberSlotInput) {
     throw new MemberReservationError('INVALID_SLOT');
   }
 
+  const closedOverrides = await findScheduleOverridesCompat({
+    organizationId: input.organizationId,
+    coachId: input.coachId,
+    date: targetDate,
+  });
+  const blockedByOverride = closedOverrides.some((candidate) =>
+    isTimeRangeClosed(candidate, input.startTime, input.endTime),
+  );
+  if (blockedByOverride && !matchedSlot) {
+    throw new MemberReservationError('TIME_CLOSED');
+  }
+
   let maxCapacity: number | null = null;
+  const override = closedOverrides.find(
+    (candidate) =>
+      candidate.type === 'OPEN' &&
+      candidate.startTime === input.startTime &&
+      candidate.endTime === input.endTime,
+  );
   if (override?.type === 'OPEN') {
     maxCapacity = override.maxCapacity || 1;
   } else {
@@ -135,7 +138,7 @@ export async function reserveMemberSlot(input: ReserveMemberSlotInput) {
   }
 
   const finalStatus =
-    organization.reservationPolicy === 'REQUEST_APPROVAL'
+    coach.reservationPolicy === 'REQUEST_APPROVAL'
       ? 'PENDING'
       : 'CONFIRMED';
 
@@ -211,11 +214,16 @@ export async function cancelMemberReservation(params: {
     throw new MemberReservationError('CANNOT_CANCEL');
   }
 
-  const organization = await prisma.organization.findUnique({
-    where: { id: reservation.organizationId },
+  const coach = await prisma.user.findFirst({
+    where: {
+      id: reservation.coachId,
+      memberships: {
+        some: { organizationId: reservation.organizationId },
+      },
+    },
     select: { reservationCancelDeadlineMinutes: true },
   });
-  if (!organization) {
+  if (!coach) {
     throw new MemberReservationError('ORG_NOT_FOUND');
   }
 
@@ -224,11 +232,11 @@ export async function cancelMemberReservation(params: {
       reservationOpenDaysBefore: 0,
       reservationOpenHoursBefore: 0,
       reservationCancelDeadlineMinutes:
-        organization.reservationCancelDeadlineMinutes,
+        coach.reservationCancelDeadlineMinutes,
     })
   ) {
     throw new MemberReservationError('CANCEL_WINDOW_CLOSED', {
-      deadlineMinutes: organization.reservationCancelDeadlineMinutes,
+      deadlineMinutes: coach.reservationCancelDeadlineMinutes,
     });
   }
 
@@ -241,6 +249,6 @@ export async function cancelMemberReservation(params: {
   return {
     reservation,
     updatedReservation,
-    deadlineMinutes: organization.reservationCancelDeadlineMinutes,
+    deadlineMinutes: coach.reservationCancelDeadlineMinutes,
   };
 }

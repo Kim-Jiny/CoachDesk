@@ -79,15 +79,24 @@ class _MemberClassDetailScreenState
     await Future.wait([
       _loadSlots(),
       _loadReservations(),
-      _loadReservationNotice(),
+      _loadReservationNotice(coachId: _selectedCoachId),
     ]);
   }
 
-  Future<void> _loadReservationNotice() async {
+  Future<void> _loadReservationNotice({String? coachId}) async {
+    final classData = _getClassData();
+    if (coachId == null && classData != null && classData.coaches.length > 1) {
+      setState(() {
+        _reservationNotice = null;
+        _isLoadingNotice = false;
+      });
+      return;
+    }
+
     setState(() => _isLoadingNotice = true);
     final notice = await ref
         .read(memberAuthProvider.notifier)
-        .fetchReservationNotice(widget.orgId);
+        .fetchReservationNotice(widget.orgId, coachId: coachId);
     if (mounted) {
       setState(() {
         _reservationNotice = notice;
@@ -111,10 +120,7 @@ class _MemberClassDetailScreenState
   }
 
   Widget _buildCoachFilter() {
-    final memberState = ref.watch(memberAuthProvider);
-    final classData = memberState.classes
-        .where((c) => c.organizationId == widget.orgId)
-        .firstOrNull;
+    final classData = _getClassData();
     if (classData == null || classData.coaches.length <= 1) {
       return const SizedBox.shrink();
     }
@@ -131,25 +137,39 @@ class _MemberClassDetailScreenState
               onSelected: (_) {
                 setState(() => _selectedCoachId = null);
                 _loadSlots();
+                _loadReservationNotice();
               },
             ),
             const SizedBox(width: 8),
-            ...classData.coaches.map((coach) => Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: FilterChip(
-                label: Text(coach.name),
-                selected: _selectedCoachId == coach.id,
-                onSelected: (_) {
-                  setState(() => _selectedCoachId =
-                      _selectedCoachId == coach.id ? null : coach.id);
-                  _loadSlots();
-                },
+            ...classData.coaches.map(
+              (coach) => Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: FilterChip(
+                  label: Text(coach.name),
+                  selected: _selectedCoachId == coach.id,
+                  onSelected: (_) {
+                    setState(
+                      () => _selectedCoachId = _selectedCoachId == coach.id
+                          ? null
+                          : coach.id,
+                    );
+                    _loadSlots();
+                    _loadReservationNotice(coachId: _selectedCoachId);
+                  },
+                ),
               ),
-            )),
+            ),
           ],
         ),
       ),
     );
+  }
+
+  MemberClass? _getClassData() {
+    final memberState = ref.read(memberAuthProvider);
+    return memberState.classes
+        .where((c) => c.organizationId == widget.orgId)
+        .firstOrNull;
   }
 
   Future<void> _loadReservations() async {
@@ -168,7 +188,9 @@ class _MemberClassDetailScreenState
   }
 
   Future<void> _reserve(MemberSlot slot) async {
-    final noticeConfirmed = await _confirmReservationNoticeIfNeeded();
+    final noticeConfirmed = await _confirmReservationNoticeIfNeeded(
+      slot.coachId,
+    );
     if (!noticeConfirmed) return;
     if (!mounted) return;
 
@@ -224,11 +246,19 @@ class _MemberClassDetailScreenState
     }
   }
 
-  Future<bool> _confirmReservationNoticeIfNeeded() async {
-    final notice = _reservationNotice;
+  Future<bool> _confirmReservationNoticeIfNeeded(String coachId) async {
+    final notice = await ref
+        .read(memberAuthProvider.notifier)
+        .fetchReservationNotice(widget.orgId, coachId: coachId);
+
     if (notice == null || !notice.hasContent) {
       return true;
     }
+
+    if (mounted) {
+      setState(() => _reservationNotice = notice);
+    }
+    if (!mounted) return false;
 
     final confirmed = await showDialog<bool>(
       context: context,
@@ -517,7 +547,9 @@ class _MemberClassDetailScreenState
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              '예약 전에 주의사항 확인이 필요합니다.',
+                              _reservationNotice?.coachName != null
+                                  ? '${_reservationNotice!.coachName} 코치 예약 전에 주의사항 확인이 필요합니다.'
+                                  : '예약 전에 주의사항 확인이 필요합니다.',
                               style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
@@ -546,9 +578,7 @@ class _MemberClassDetailScreenState
           ),
 
           // Coach filter
-          SliverToBoxAdapter(
-            child: _buildCoachFilter(),
-          ),
+          SliverToBoxAdapter(child: _buildCoachFilter()),
 
           // Slots list
           if (_isLoadingSlots)
@@ -846,7 +876,7 @@ class _ReservationNoticeDialogState extends State<_ReservationNoticeDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '${notice.organizationName} 예약 주의사항을 확인한 뒤 신청할 수 있어요.',
+                '${notice.coachName ?? notice.organizationName} 예약 주의사항을 확인한 뒤 신청할 수 있어요.',
                 style: TextStyle(
                   fontSize: 13,
                   color: Colors.grey.shade700,

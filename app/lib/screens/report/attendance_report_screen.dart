@@ -8,17 +8,22 @@ import '../../core/theme.dart';
 import '../../widgets/common.dart';
 
 class AttendanceReportScreen extends ConsumerStatefulWidget {
-  const AttendanceReportScreen({super.key});
+  final String reportScope;
+
+  const AttendanceReportScreen({super.key, this.reportScope = 'center'});
 
   @override
-  ConsumerState<AttendanceReportScreen> createState() => _AttendanceReportScreenState();
+  ConsumerState<AttendanceReportScreen> createState() =>
+      _AttendanceReportScreenState();
 }
 
-class _AttendanceReportScreenState extends ConsumerState<AttendanceReportScreen> {
+class _AttendanceReportScreenState
+    extends ConsumerState<AttendanceReportScreen> {
   DateTime _startDate = DateTime(DateTime.now().year, DateTime.now().month, 1);
   DateTime _endDate = DateTime.now();
   Map<String, dynamic>? _report;
   bool _isLoading = false;
+  bool get _isAdminScope => widget.reportScope == 'admin';
 
   @override
   void initState() {
@@ -30,10 +35,14 @@ class _AttendanceReportScreenState extends ConsumerState<AttendanceReportScreen>
     setState(() => _isLoading = true);
     try {
       final dio = ref.read(dioProvider);
-      final response = await dio.get('/reports/attendance', queryParameters: {
-        'startDate': DateFormat('yyyy-MM-dd').format(_startDate),
-        'endDate': DateFormat('yyyy-MM-dd').format(_endDate),
-      });
+      final response = await dio.get(
+        '/reports/attendance',
+        queryParameters: {
+          'startDate': DateFormat('yyyy-MM-dd').format(_startDate),
+          'endDate': DateFormat('yyyy-MM-dd').format(_endDate),
+          if (_isAdminScope) 'scope': 'admin',
+        },
+      );
       setState(() {
         _report = response.data as Map<String, dynamic>;
         _isLoading = false;
@@ -46,7 +55,7 @@ class _AttendanceReportScreenState extends ConsumerState<AttendanceReportScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('출석 통계')),
+      appBar: AppBar(title: Text(_isAdminScope ? '관리자 출석 통계' : '센터 출석 통계')),
       body: Column(
         children: [
           // Date range
@@ -79,7 +88,11 @@ class _AttendanceReportScreenState extends ConsumerState<AttendanceReportScreen>
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Icon(Icons.arrow_forward_rounded, size: 16, color: Colors.grey.shade400),
+                  child: Icon(
+                    Icons.arrow_forward_rounded,
+                    size: 16,
+                    color: Colors.grey.shade400,
+                  ),
                 ),
                 Expanded(
                   child: _DateButton(
@@ -103,10 +116,18 @@ class _AttendanceReportScreenState extends ConsumerState<AttendanceReportScreen>
           ),
           Expanded(
             child: _isLoading
-                ? const Center(child: ShimmerLoading(style: ShimmerStyle.card, itemCount: 3))
+                ? const Center(
+                    child: ShimmerLoading(
+                      style: ShimmerStyle.card,
+                      itemCount: 3,
+                    ),
+                  )
                 : _report == null
-                    ? const EmptyState(icon: Icons.pie_chart, message: '데이터를 불러올 수 없습니다')
-                    : _buildContent(context),
+                ? const EmptyState(
+                    icon: Icons.pie_chart,
+                    message: '데이터를 불러올 수 없습니다',
+                  )
+                : _buildContent(context),
           ),
         ],
       ),
@@ -115,7 +136,8 @@ class _AttendanceReportScreenState extends ConsumerState<AttendanceReportScreen>
 
   Widget _buildContent(BuildContext context) {
     final total = _report!['total'] as int? ?? 0;
-    final byAttendance = _report!['byAttendance'] as Map<String, dynamic>? ?? {};
+    final byAttendance =
+        _report!['byAttendance'] as Map<String, dynamic>? ?? {};
 
     final items = [
       ('출석', 'PRESENT', AppTheme.successColor, Icons.check_circle_rounded),
@@ -139,19 +161,30 @@ class _AttendanceReportScreenState extends ConsumerState<AttendanceReportScreen>
                     color: Colors.white.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Icons.fitness_center, color: Colors.white, size: 28),
+                  child: const Icon(
+                    Icons.fitness_center,
+                    color: Colors.white,
+                    size: 28,
+                  ),
                 ),
                 const SizedBox(width: 16),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '총 세션',
-                      style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 14),
+                      _isAdminScope ? '내 진행 세션' : '총 세션',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.8),
+                        fontSize: 14,
+                      ),
                     ),
                     Text(
                       '$total회',
-                      style: const TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 30,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ],
                 ),
@@ -212,13 +245,20 @@ class _AttendanceReportScreenState extends ConsumerState<AttendanceReportScreen>
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Container(
-                            width: 10, height: 10,
-                            decoration: BoxDecoration(color: item.$3, shape: BoxShape.circle),
+                            width: 10,
+                            height: 10,
+                            decoration: BoxDecoration(
+                              color: item.$3,
+                              shape: BoxShape.circle,
+                            ),
                           ),
                           const SizedBox(width: 4),
                           Text(
                             '${item.$1} $count회',
-                            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade600,
+                            ),
                           ),
                         ],
                       );
@@ -233,7 +273,9 @@ class _AttendanceReportScreenState extends ConsumerState<AttendanceReportScreen>
           // Breakdown cards
           ...items.map((item) {
             final count = byAttendance[item.$2] as int? ?? 0;
-            final pct = total > 0 ? (count / total * 100).toStringAsFixed(1) : '0.0';
+            final pct = total > 0
+                ? (count / total * 100).toStringAsFixed(1)
+                : '0.0';
             return Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Container(
@@ -258,7 +300,10 @@ class _AttendanceReportScreenState extends ConsumerState<AttendanceReportScreen>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(item.$1, style: const TextStyle(fontWeight: FontWeight.w600)),
+                          Text(
+                            item.$1,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
                           const SizedBox(height: 6),
                           if (total > 0)
                             ClipRRect(
@@ -279,11 +324,17 @@ class _AttendanceReportScreenState extends ConsumerState<AttendanceReportScreen>
                       children: [
                         Text(
                           '$count회',
-                          style: TextStyle(fontWeight: FontWeight.w700, color: item.$3),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: item.$3,
+                          ),
                         ),
                         Text(
                           '$pct%',
-                          style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey.shade500,
+                          ),
                         ),
                       ],
                     ),
@@ -318,11 +369,19 @@ class _DateButton extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.calendar_today_rounded, size: 14, color: Colors.grey.shade500),
+            Icon(
+              Icons.calendar_today_rounded,
+              size: 14,
+              color: Colors.grey.shade500,
+            ),
             const SizedBox(width: 6),
             Text(
               DateFormat('yy.M.d').format(date),
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.grey.shade700),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: Colors.grey.shade700,
+              ),
             ),
           ],
         ),

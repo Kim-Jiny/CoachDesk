@@ -59,6 +59,13 @@ model User {
   name         String
   phone        String?
   profileImage String?
+  bookingMode  BookingMode       @default(PRIVATE)
+  reservationPolicy  ReservationPolicy @default(AUTO_CONFIRM)
+  reservationNoticeText String?
+  reservationNoticeImageUrl String?
+  reservationOpenDaysBefore Int        @default(30)
+  reservationOpenHoursBefore Int       @default(0)
+  reservationCancelDeadlineMinutes Int @default(120)
   fcmToken     String?
   notificationPreferences String?
   googleId     String?  @unique
@@ -71,6 +78,7 @@ model User {
   scheduleOverrides ScheduleOverride[]
   reservations  Reservation[]    @relation("coachReservations")
   sessions      Session[]        @relation("coachSessions")
+  packages      Package[]
   notifications Notification[]
   chatRooms     ChatRoom[]
   centerJoinRequests CenterJoinRequest[]
@@ -271,11 +279,19 @@ enum ReservationStatus {
   NO_SHOW
 }
 
+enum PackageScope {
+  CENTER
+  ADMIN
+}
+
 // ─── Package (패키지 템플릿) ───────────────────────────────
 model Package {
   id             String       @id @default(uuid())
   organizationId String
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  coachId        String?
+  coach          User?        @relation(fields: [coachId], references: [id], onDelete: SetNull)
+  scope          PackageScope @default(CENTER)
   name           String
   totalSessions  Int
   price          Int          // KRW
@@ -286,6 +302,8 @@ model Package {
   updatedAt      DateTime     @updatedAt
 
   memberPackages MemberPackage[]
+
+  @@index([organizationId, scope, coachId])
 }
 
 // ─── MemberPackage (회원에 할당된 패키지) ──────────────────

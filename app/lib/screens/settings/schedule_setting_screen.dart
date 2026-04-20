@@ -16,9 +16,7 @@ class ScheduleSettingScreen extends ConsumerStatefulWidget {
 class _ScheduleSettingScreenState extends ConsumerState<ScheduleSettingScreen> {
   List<dynamic> _schedules = [];
   List<ScheduleOverride> _overrides = [];
-  Map<String, dynamic>? _orgData;
   bool _isLoading = true;
-  bool _isUpdatingReservationPolicy = false;
 
   static const _dayNames = ['일', '월', '화', '수', '목', '금', '토'];
 
@@ -43,7 +41,6 @@ class _ScheduleSettingScreenState extends ConsumerState<ScheduleSettingScreen> {
             'endDate': DateFormat('yyyy-MM-dd').format(end),
           },
         ),
-        dio.get('/organizations/mine'),
       ]);
       setState(() {
         _schedules = responses[0].data as List;
@@ -52,50 +49,10 @@ class _ScheduleSettingScreenState extends ConsumerState<ScheduleSettingScreen> {
               (json) => ScheduleOverride.fromJson(json as Map<String, dynamic>),
             )
             .toList();
-        _orgData = responses[2].data as Map<String, dynamic>;
         _isLoading = false;
       });
     } catch (_) {
       setState(() => _isLoading = false);
-    }
-  }
-
-  bool get _canEditReservationPolicy {
-    final myRole = _orgData?['myRole'] as String?;
-    return myRole == 'OWNER' || myRole == 'ADMIN';
-  }
-
-  Future<void> _updateReservationPolicy(String policy) async {
-    final org = _orgData;
-    if (org == null || _isUpdatingReservationPolicy) return;
-
-    setState(() => _isUpdatingReservationPolicy = true);
-    try {
-      final dio = ref.read(dioProvider);
-      await dio.put(
-        '/organizations/${org['id']}',
-        data: {'reservationPolicy': policy},
-      );
-      await _loadData();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            policy == 'REQUEST_APPROVAL'
-                ? '예약이 신청 후 승인 방식으로 변경되었습니다'
-                : '예약이 즉시 확정 방식으로 변경되었습니다',
-          ),
-        ),
-      );
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('예약 정책 변경에 실패했습니다')));
-    } finally {
-      if (mounted) {
-        setState(() => _isUpdatingReservationPolicy = false);
-      }
     }
   }
 
@@ -228,86 +185,6 @@ class _ScheduleSettingScreenState extends ConsumerState<ScheduleSettingScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 132),
                 children: [
-                  if (_orgData != null) ...[
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.04),
-                            blurRadius: 12,
-                            offset: const Offset(0, 6),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              const Expanded(
-                                child: Text(
-                                  '예약 처리 방식',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ),
-                              if (_isUpdatingReservationPolicy)
-                                const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            '회원이 바로 예약 확정될지, 신청 후 관리자가 승인할지 설정합니다.',
-                            style: TextStyle(
-                              color: Colors.grey.shade600,
-                              fontSize: 13,
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                          SegmentedButton<String>(
-                            segments: const [
-                              ButtonSegment(
-                                value: 'AUTO_CONFIRM',
-                                label: Text('즉시 확정'),
-                                icon: Icon(Icons.flash_on_outlined),
-                              ),
-                              ButtonSegment(
-                                value: 'REQUEST_APPROVAL',
-                                label: Text('신청 후 승인'),
-                                icon: Icon(Icons.fact_check_outlined),
-                              ),
-                            ],
-                            selected: {
-                              (_orgData!['reservationPolicy'] as String?) ??
-                                  'AUTO_CONFIRM',
-                            },
-                            onSelectionChanged: _canEditReservationPolicy
-                                ? (selection) {
-                                    final next = selection.first;
-                                    if (next ==
-                                        _orgData!['reservationPolicy']) {
-                                      return;
-                                    }
-                                    _updateReservationPolicy(next);
-                                  }
-                                : null,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                  ],
                   Text(
                     '주간 가용시간',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(

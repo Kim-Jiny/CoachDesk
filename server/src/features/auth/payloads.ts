@@ -21,6 +21,13 @@ export function toUserPayload(user: {
   name: string;
   phone?: string | null;
   profileImage?: string | null;
+  bookingMode?: string;
+  reservationPolicy?: string;
+  reservationNoticeText?: string | null;
+  reservationNoticeImageUrl?: string | null;
+  reservationOpenDaysBefore?: number;
+  reservationOpenHoursBefore?: number;
+  reservationCancelDeadlineMinutes?: number;
 }) {
   return {
     id: user.id,
@@ -28,6 +35,14 @@ export function toUserPayload(user: {
     name: user.name,
     phone: user.phone,
     profileImage: user.profileImage,
+    bookingMode: user.bookingMode ?? 'PRIVATE',
+    reservationPolicy: user.reservationPolicy ?? 'AUTO_CONFIRM',
+    reservationNoticeText: user.reservationNoticeText,
+    reservationNoticeImageUrl: user.reservationNoticeImageUrl,
+    reservationOpenDaysBefore: user.reservationOpenDaysBefore ?? 30,
+    reservationOpenHoursBefore: user.reservationOpenHoursBefore ?? 0,
+    reservationCancelDeadlineMinutes:
+      user.reservationCancelDeadlineMinutes ?? 120,
   };
 }
 

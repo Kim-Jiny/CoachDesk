@@ -32,6 +32,8 @@ export class PackageMutationError extends Error {
 
 export async function createPackage(params: {
   organizationId: string;
+  scope: 'CENTER' | 'ADMIN';
+  coachId?: string | null;
   name: string;
   totalSessions: number;
   price: number;
@@ -42,6 +44,8 @@ export async function createPackage(params: {
   return prisma.package.create({
     data: {
       organizationId: params.organizationId,
+      scope: params.scope,
+      coachId: params.coachId,
       name: params.name,
       totalSessions: params.totalSessions,
       price: params.price,
@@ -54,7 +58,11 @@ export async function createPackage(params: {
 
 export async function updatePackage(params: {
   organizationId: string;
+  userId: string;
+  canManageCenterPackage: boolean;
   packageId: string;
+  scope?: 'CENTER' | 'ADMIN';
+  coachId?: string | null;
   name?: string;
   totalSessions?: number;
   price?: number;
@@ -63,7 +71,14 @@ export async function updatePackage(params: {
   isPublic?: boolean;
 }) {
   const existingPackage = await prisma.package.findFirst({
-    where: { id: params.packageId, organizationId: params.organizationId },
+    where: {
+      id: params.packageId,
+      organizationId: params.organizationId,
+      OR: [
+        ...(params.canManageCenterPackage ? [{ scope: 'CENTER' as const }] : []),
+        { scope: 'ADMIN', coachId: params.userId },
+      ],
+    },
     select: { id: true },
   });
   if (!existingPackage) {
@@ -79,12 +94,16 @@ export async function updatePackage(params: {
       validDays: params.validDays,
       isActive: params.isActive,
       isPublic: params.isPublic,
+      scope: params.scope,
+      coachId: params.coachId,
     },
   });
 }
 
 export async function assignPackageToMember(params: {
   organizationId: string;
+  userId: string;
+  canManageCenterPackage: boolean;
   memberId: string;
   packageId: string;
   paidAmount: number;
@@ -92,7 +111,14 @@ export async function assignPackageToMember(params: {
 }) {
   const [pkg, member] = await Promise.all([
     prisma.package.findFirst({
-      where: { id: params.packageId, organizationId: params.organizationId },
+      where: {
+        id: params.packageId,
+        organizationId: params.organizationId,
+        OR: [
+          ...(params.canManageCenterPackage ? [{ scope: 'CENTER' as const }] : []),
+          { scope: 'ADMIN', coachId: params.userId },
+        ],
+      },
     }),
     prisma.member.findFirst({
       where: { id: params.memberId, organizationId: params.organizationId },

@@ -59,7 +59,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   iconColor: AppTheme.primaryColor,
                   title: '이름',
                   subtitle: name ?? '-',
-                  onTap: isMember ? null : () => context.push('/settings/profile'),
+                  onTap: isMember
+                      ? null
+                      : () => context.push('/settings/profile'),
                 ),
                 _SettingsItem(
                   icon: Icons.mail_rounded,
@@ -126,39 +128,37 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             if (!isMember) ...[
               const SizedBox(height: 16),
-              _SectionTitle('관리 메뉴'),
+              _SectionTitle('센터 관리'),
               _SettingsGroup(
                 children: [
                   _SettingsItem(
                     icon: Icons.inventory_2_rounded,
                     iconColor: Colors.teal,
-                    title: '패키지 관리',
-                    onTap: () => context.push('/packages'),
+                    title: '센터 패키지',
+                    subtitle: '센터 공통 패키지를 관리합니다',
+                    onTap: () => context.push('/packages?scope=center'),
                   ),
                   _SettingsItem(
                     icon: Icons.bar_chart_rounded,
                     iconColor: Colors.blue,
-                    title: '매출 리포트',
-                    onTap: () => context.push('/reports/revenue'),
+                    title: '센터 매출 통계',
+                    subtitle: '센터 전체 매출 흐름을 확인합니다',
+                    onTap: () => context.push('/reports/revenue?scope=center'),
                   ),
                   _SettingsItem(
                     icon: Icons.pie_chart_rounded,
                     iconColor: Colors.purple,
-                    title: '출석 통계',
-                    onTap: () => context.push('/reports/attendance'),
+                    title: '센터 출석 통계',
+                    subtitle: '센터 전체 수업 출석을 확인합니다',
+                    onTap: () =>
+                        context.push('/reports/attendance?scope=center'),
                   ),
                   _SettingsItem(
                     icon: Icons.business_rounded,
                     iconColor: Colors.indigo,
                     title: '센터 설정',
-                    subtitle: '센터 정보, 예약 정책, 주의사항 관리',
+                    subtitle: '센터 이름과 설명을 관리합니다',
                     onTap: () => context.push('/settings/center'),
-                  ),
-                  _SettingsItem(
-                    icon: Icons.schedule_rounded,
-                    iconColor: Colors.orange,
-                    title: '수업시간 설정',
-                    onTap: () => context.push('/settings/schedules'),
                   ),
                   _SettingsItem(
                     icon: Icons.group_rounded,
@@ -166,6 +166,48 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     title: '팀 관리',
                     subtitle: '팀원 목록, 합류 신청, 역할 관리',
                     onTap: () => context.push('/settings/team'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              _SectionTitle('관리자 관리'),
+              _SettingsGroup(
+                children: [
+                  _SettingsItem(
+                    icon: Icons.person_rounded,
+                    iconColor: AppTheme.primaryColor,
+                    title: '관리자 프로필/예약 설정',
+                    subtitle: '내 예약 안내, 주의사항, 공개 설정을 관리합니다',
+                    onTap: () => context.push('/settings/profile'),
+                  ),
+                  _SettingsItem(
+                    icon: Icons.schedule_rounded,
+                    iconColor: Colors.orange,
+                    title: '수업시간 설정',
+                    subtitle: '내 수업 가용시간과 예외 일정을 설정합니다',
+                    onTap: () => context.push('/settings/schedules'),
+                  ),
+                  _SettingsItem(
+                    icon: Icons.inventory_rounded,
+                    iconColor: Colors.deepOrange,
+                    title: '관리자 패키지',
+                    subtitle: '내 전용 패키지를 따로 관리합니다',
+                    onTap: () => context.push('/packages?scope=admin'),
+                  ),
+                  _SettingsItem(
+                    icon: Icons.stacked_bar_chart_rounded,
+                    iconColor: Colors.blueGrey,
+                    title: '관리자 매출 통계',
+                    subtitle: '내 패키지 매출만 확인합니다',
+                    onTap: () => context.push('/reports/revenue?scope=admin'),
+                  ),
+                  _SettingsItem(
+                    icon: Icons.donut_large_rounded,
+                    iconColor: Colors.pink,
+                    title: '관리자 출석 통계',
+                    subtitle: '내가 진행한 수업 출석만 확인합니다',
+                    onTap: () =>
+                        context.push('/reports/attendance?scope=admin'),
                   ),
                 ],
               ),
@@ -217,8 +259,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         if (isMember) {
           final hasAdminToken = ApiClient.getAdminAccessToken() != null;
           if (hasAdminToken) {
-            final switched =
-                await ref.read(authProvider.notifier).switchFromMember();
+            final switched = await ref
+                .read(authProvider.notifier)
+                .switchFromMember();
             if (!switched && context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(

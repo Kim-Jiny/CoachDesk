@@ -98,6 +98,7 @@ export async function getMemberMyClasses(memberAccountId: string) {
 export async function getReservationNotice(params: {
   memberAccountId: string;
   organizationId: string;
+  coachId?: string;
 }) {
   const member = await prisma.member.findFirst({
     where: {
@@ -110,31 +111,105 @@ export async function getReservationNotice(params: {
     throw new MemberAccountQueryError('NOT_MEMBER_OF_STUDIO');
   }
 
-  const organization = await prisma.organization.findUnique({
-    where: { id: params.organizationId },
-    select: {
-      id: true,
-      name: true,
-      reservationNoticeText: true,
-      reservationNoticeImageUrl: true,
-      reservationOpenDaysBefore: true,
-      reservationOpenHoursBefore: true,
-      reservationCancelDeadlineMinutes: true,
-    },
-  });
-  if (!organization) {
+  const coachId =
+    params.coachId ??
+    (await prisma.orgMembership.findFirst({
+      where: {
+        organizationId: params.organizationId,
+        role: { in: ['OWNER', 'MANAGER', 'STAFF'] },
+      },
+      orderBy: { createdAt: 'asc' },
+      select: { userId: true },
+    }))?.userId;
+
+  if (!coachId) {
+    throw new MemberAccountQueryError('ORG_NOT_FOUND');
+  }
+
+  const [organization, coach] = await Promise.all([
+    prisma.organization.findUnique({
+      where: { id: params.organizationId },
+      select: {
+        id: true,
+        name: true,
+      },
+    }),
+    prisma.user.findFirst({
+      where: {
+        id: coachId,
+        memberships: {
+          some: { organizationId: params.organizationId },
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+        reservationNoticeText: true,
+        reservationNoticeImageUrl: true,
+        reservationOpenDaysBefore: true,
+        reservationOpenHoursBefore: true,
+        reservationCancelDeadlineMinutes: true,
+      },
+    }),
+  ]);
+
+  if (!organization || !coach) {
     throw new MemberAccountQueryError('ORG_NOT_FOUND');
   }
 
   return {
     organizationId: organization.id,
     organizationName: organization.name,
-    reservationNoticeText: organization.reservationNoticeText,
-    reservationNoticeImageUrl: organization.reservationNoticeImageUrl,
-    reservationOpenDaysBefore: organization.reservationOpenDaysBefore,
-    reservationOpenHoursBefore: organization.reservationOpenHoursBefore,
-    reservationCancelDeadlineMinutes: organization.reservationCancelDeadlineMinutes,
+    coachId: coach.id,
+    coachName: coach.name,
+    reservationNoticeText: coach.reservationNoticeText,
+    reservationNoticeImageUrl: coach.reservationNoticeImageUrl,
+    reservationOpenDaysBefore: coach.reservationOpenDaysBefore,
+    reservationOpenHoursBefore: coach.reservationOpenHoursBefore,
+    reservationCancelDeadlineMinutes: coach.reservationCancelDeadlineMinutes,
   };
+}
+
+type CoachReservationPolicy = {
+  bookingMode: string;
+  reservationOpenDaysBefore: number;
+  reservationOpenHoursBefore: number;
+};
+
+async function getCoachReservationPolicies(
+  organizationId: string,
+  coachIds: string[],
+) {
+  const uniqueCoachIds = [...new Set(coachIds)];
+  if (uniqueCoachIds.length === 0) {
+    return new Map<string, CoachReservationPolicy>();
+  }
+
+  const coaches = await prisma.user.findMany({
+    where: {
+      id: { in: uniqueCoachIds },
+      memberships: {
+        some: { organizationId },
+      },
+    },
+    select: {
+      id: true,
+      bookingMode: true,
+      reservationOpenDaysBefore: true,
+      reservationOpenHoursBefore: true,
+    },
+  });
+
+  return new Map(
+    coaches.map((coach) => [
+      coach.id,
+      {
+        bookingMode: coach.bookingMode,
+        reservationOpenDaysBefore: coach.reservationOpenDaysBefore,
+        reservationOpenHoursBefore: coach.reservationOpenHoursBefore,
+      },
+    ]),
+  );
 }
 
 export async function getStudioSlots(params: {
@@ -158,35 +233,30 @@ export async function getStudioSlots(params: {
     throw new MemberAccountQueryError('NOT_MEMBER_OF_STUDIO');
   }
 
-  const [slots, organization] = await Promise.all([
-    getAvailableSlots({
-      organizationId: params.organizationId,
-      date: params.date,
-      coachId: params.coachId,
-      includeCoachNames: true,
-    }),
-    prisma.organization.findUnique({
-      where: { id: params.organizationId },
-      select: {
-        reservationOpenDaysBefore: true,
-        reservationOpenHoursBefore: true,
-      },
-    }),
-  ]);
+  const slots = await getAvailableSlots({
+    organizationId: params.organizationId,
+    date: params.date,
+    coachId: params.coachId,
+    includeCoachNames: true,
+  });
 
-  if (!organization) {
-    throw new MemberAccountQueryError('ORG_NOT_FOUND');
-  }
+  const policies = await getCoachReservationPolicies(
+    params.organizationId,
+    slots.map((slot) => slot.coachId),
+  );
 
   return slots
     .filter((slot) => slot.isPublic)
-    .filter((slot) =>
-      canReserveAt(params.date!, slot.startTime, {
-        reservationOpenDaysBefore: organization.reservationOpenDaysBefore,
-        reservationOpenHoursBefore: organization.reservationOpenHoursBefore,
+    .filter((slot) => {
+      const policy = policies.get(slot.coachId);
+      if (!policy) return false;
+      if (policy.bookingMode !== 'PUBLIC') return false;
+      return canReserveAt(params.date!, slot.startTime, {
+        reservationOpenDaysBefore: policy.reservationOpenDaysBefore,
+        reservationOpenHoursBefore: policy.reservationOpenHoursBefore,
         reservationCancelDeadlineMinutes: 0,
-      }),
-    );
+      });
+    });
 }
 
 export async function getMyReservations(memberAccountId: string) {

@@ -9,10 +9,15 @@ import '../../providers/package_provider.dart';
 class AssignPackageScreen extends ConsumerStatefulWidget {
   final String memberId;
   final String memberName;
-  const AssignPackageScreen({super.key, required this.memberId, required this.memberName});
+  const AssignPackageScreen({
+    super.key,
+    required this.memberId,
+    required this.memberName,
+  });
 
   @override
-  ConsumerState<AssignPackageScreen> createState() => _AssignPackageScreenState();
+  ConsumerState<AssignPackageScreen> createState() =>
+      _AssignPackageScreenState();
 }
 
 class _AssignPackageScreenState extends ConsumerState<AssignPackageScreen> {
@@ -35,27 +40,31 @@ class _AssignPackageScreenState extends ConsumerState<AssignPackageScreen> {
 
   Future<void> _assign() async {
     if (_selectedPackage == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('패키지를 선택하세요')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('패키지를 선택하세요')));
       return;
     }
 
     setState(() => _isSubmitting = true);
 
-    final success = await ref.read(packageProvider.notifier).assignToMember(
-      memberId: widget.memberId,
-      packageId: _selectedPackage!.id,
-      paidAmount: int.tryParse(_paidAmountController.text) ?? _selectedPackage!.price,
-      paymentMethod: _paymentMethod,
-    );
+    final success = await ref
+        .read(packageProvider.notifier)
+        .assignToMember(
+          memberId: widget.memberId,
+          packageId: _selectedPackage!.id,
+          paidAmount:
+              int.tryParse(_paidAmountController.text) ??
+              _selectedPackage!.price,
+          paymentMethod: _paymentMethod,
+        );
 
     setState(() => _isSubmitting = false);
 
     if (success && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('패키지가 할당되었습니다')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('패키지가 할당되었습니다')));
       context.pop(true);
     }
   }
@@ -81,13 +90,18 @@ class _AssignPackageScreenState extends ConsumerState<AssignPackageScreen> {
               items: activePackages.map((p) {
                 return DropdownMenuItem(
                   value: p,
-                  child: Text('${p.name} (${p.totalSessions}회 / ${formatter.format(p.price)}원)'),
+                  child: Text(
+                    '[${p.isAdminScoped ? '관리자' : '센터'}] ${p.name} '
+                    '(${p.totalSessions}회 / ${formatter.format(p.price)}원)',
+                  ),
                 );
               }).toList(),
               onChanged: (v) {
                 setState(() {
                   _selectedPackage = v;
-                  if (v != null) _paidAmountController.text = v.price.toString();
+                  if (v != null) {
+                    _paidAmountController.text = v.price.toString();
+                  }
                 });
               },
             ),
@@ -118,15 +132,23 @@ class _AssignPackageScreenState extends ConsumerState<AssignPackageScreen> {
             if (_selectedPackage != null) ...[
               const SizedBox(height: 24),
               Card(
-                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
+                color: Theme.of(
+                  context,
+                ).colorScheme.primary.withValues(alpha: 0.05),
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('패키지 요약', style: Theme.of(context).textTheme.titleSmall),
+                      Text(
+                        '패키지 요약',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
                       const SizedBox(height: 8),
-                      Text('${_selectedPackage!.name} - ${_selectedPackage!.totalSessions}회'),
+                      Text(
+                        '${_selectedPackage!.name} - ${_selectedPackage!.totalSessions}회',
+                      ),
+                      Text('구분: ${_selectedPackage!.scopeLabel}'),
                       if (_selectedPackage!.validDays != null)
                         Text('유효기간: ${_selectedPackage!.validDays}일'),
                       Text('정가: ${formatter.format(_selectedPackage!.price)}원'),
@@ -139,7 +161,11 @@ class _AssignPackageScreenState extends ConsumerState<AssignPackageScreen> {
             ElevatedButton(
               onPressed: _isSubmitting ? null : _assign,
               child: _isSubmitting
-                  ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
                   : const Text('패키지 할당'),
             ),
           ],

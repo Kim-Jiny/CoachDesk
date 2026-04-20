@@ -15,7 +15,7 @@ router.get('/revenue', async (req: Request, res: Response) => {
     const orgId = await requireCurrentOrgId(req, res);
     if (!orgId) return;
 
-    const { startDate, endDate } = req.query;
+    const { startDate, endDate, scope } = req.query;
     if (!startDate || !endDate) {
       res.status(400).json({ error: 'startDate and endDate required' });
       return;
@@ -24,12 +24,18 @@ router.get('/revenue', async (req: Request, res: Response) => {
     const memberPackages = await prisma.memberPackage.findMany({
       where: {
         member: { organizationId: orgId },
+        ...(scope === 'admin'
+          ? { package: { scope: 'ADMIN', coachId: req.user!.userId } }
+          : {}),
         purchaseDate: {
           gte: parseDateOnly(startDate as string),
           lt: parseDateOnly(addDays(endDate as string, 1)),
         },
       },
-      include: { package: true, member: { select: { name: true } } },
+      include: {
+        package: { include: { coach: { select: { id: true, name: true } } } },
+        member: { select: { name: true } },
+      },
       orderBy: [
         { purchaseDate: 'desc' },
         { createdAt: 'desc' },
@@ -63,7 +69,7 @@ router.get('/attendance', async (req: Request, res: Response) => {
     const orgId = await requireCurrentOrgId(req, res);
     if (!orgId) return;
 
-    const { startDate, endDate } = req.query;
+    const { startDate, endDate, scope } = req.query;
     if (!startDate || !endDate) {
       res.status(400).json({ error: 'startDate and endDate required' });
       return;
@@ -72,6 +78,7 @@ router.get('/attendance', async (req: Request, res: Response) => {
     const sessions = await prisma.session.findMany({
       where: {
         organizationId: orgId,
+        ...(scope === 'admin' ? { coachId: req.user!.userId } : {}),
         date: {
           gte: parseDateOnly(startDate as string),
           lt: parseDateOnly(addDays(endDate as string, 1)),

@@ -1,10 +1,7 @@
 import { prisma } from '../../utils/prisma';
 import { isUserInOrganization } from '../../utils/org-access';
 import { getKstDayOfWeek, parseDateOnly } from '../../utils/kst-date';
-import {
-  findFirstScheduleCompat,
-  findFirstScheduleOverrideCompat,
-} from '../../utils/schedule-access';
+import { findFirstScheduleCompat, findScheduleOverridesCompat } from '../../utils/schedule-access';
 import { encodeMemoFields } from '../../utils/memo-fields';
 import { isTimeRangeClosed } from '../../utils/slot-blocking';
 import { getAvailableSlots } from '../../utils/slot-service';
@@ -64,38 +61,6 @@ export async function createAdminReservation(
     throw new CreateAdminReservationError('COACH_NOT_IN_ORG');
   }
 
-  const override = await findFirstScheduleOverrideCompat({
-    organizationId: input.organizationId,
-    coachId,
-    date: targetDate,
-  });
-
-  if (override?.type === 'CLOSED') {
-    throw new CreateAdminReservationError('DATE_CLOSED');
-  }
-
-  const closedOverrides = await prisma.scheduleOverride.findMany({
-    where: {
-      organizationId: input.organizationId,
-      coachId,
-      date: targetDate,
-      type: 'CLOSED',
-    },
-    select: {
-      startTime: true,
-      endTime: true,
-      type: true,
-    },
-  });
-
-  if (
-    closedOverrides.some((candidate) =>
-      isTimeRangeClosed(candidate, input.startTime, input.endTime),
-    )
-  ) {
-    throw new CreateAdminReservationError('TIME_CLOSED');
-  }
-
   const generatedSlots = await getAvailableSlots({
     organizationId: input.organizationId,
     date: input.date,
@@ -112,6 +77,21 @@ export async function createAdminReservation(
         slot.endTime,
       ),
   );
+
+  const closedOverrides = await findScheduleOverridesCompat({
+    organizationId: input.organizationId,
+    coachId,
+    date: targetDate,
+  });
+
+  if (
+    overlappingGeneratedSlots.length === 0 &&
+    closedOverrides.some((candidate) =>
+      isTimeRangeClosed(candidate, input.startTime, input.endTime),
+    )
+  ) {
+    throw new CreateAdminReservationError('TIME_CLOSED');
+  }
 
   if (input.manualTime) {
     if (overlappingGeneratedSlots.length > 0 && input.force !== true) {
@@ -130,6 +110,12 @@ export async function createAdminReservation(
   }
 
   let maxCapacity: number | null = null;
+  const override = closedOverrides.find(
+    (candidate) =>
+      candidate.type === 'OPEN' &&
+      candidate.startTime === input.startTime &&
+      candidate.endTime === input.endTime,
+  );
   if (override?.type === 'OPEN') {
     maxCapacity = override.maxCapacity || 1;
   } else {

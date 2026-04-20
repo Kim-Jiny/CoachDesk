@@ -1,15 +1,31 @@
 import { prisma } from '../../utils/prisma';
 import { listMemberPackagesCompat } from '../../utils/member-package-access';
 
-export async function listPackagesWithStats(organizationId: string) {
+export async function listPackagesWithStats(params: {
+  organizationId: string;
+  userId: string;
+}) {
   const [packages, memberPackages] = await Promise.all([
     prisma.package.findMany({
-      where: { organizationId },
+      where: {
+        organizationId: params.organizationId,
+        OR: [
+          { scope: 'CENTER' },
+          { scope: 'ADMIN', coachId: params.userId },
+        ],
+      },
+      include: { coach: { select: { id: true, name: true } } },
       orderBy: { createdAt: 'desc' },
     }),
     prisma.memberPackage.findMany({
       where: {
-        package: { organizationId },
+        package: {
+          organizationId: params.organizationId,
+          OR: [
+            { scope: 'CENTER' },
+            { scope: 'ADMIN', coachId: params.userId },
+          ],
+        },
       },
       select: {
         packageId: true,
@@ -44,6 +60,7 @@ export async function listPackagesWithStats(organizationId: string) {
     const stats = statsByPackageId.get(pkg.id);
     return {
       ...pkg,
+      coachName: pkg.coach?.name ?? null,
       activeMemberCount: stats?.activeMemberIds.size ?? 0,
       totalUsedSessions: stats?.totalUsedSessions ?? 0,
     };

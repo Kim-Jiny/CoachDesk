@@ -188,6 +188,29 @@ const createOverrideSchema = z.object({
   isPublic: z.boolean().optional(),
 });
 
+const moveSlotSchema = z.object({
+  coachId: z.string().uuid().optional(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  currentStartTime: z.string().regex(/^\d{2}:\d{2}$/),
+  currentEndTime: z.string().regex(/^\d{2}:\d{2}$/),
+  newStartTime: z.string().regex(/^\d{2}:\d{2}$/),
+  newEndTime: z.string().regex(/^\d{2}:\d{2}$/),
+  slotDuration: z.number().min(1),
+  maxCapacity: z.number().min(1).default(1),
+  isPublic: z.boolean().default(false),
+});
+
+function overlapsTimeRange(
+  leftStart?: string | null,
+  leftEnd?: string | null,
+  rightStart?: string | null,
+  rightEnd?: string | null,
+) {
+  if (!leftStart || !leftEnd || !rightStart || !rightEnd) return false;
+  return timeToMinutes(leftStart) < timeToMinutes(rightEnd) &&
+    timeToMinutes(rightStart) < timeToMinutes(leftEnd);
+}
+
 router.post('/overrides', async (req: Request, res: Response) => {
   try {
     const orgId = await requireCurrentOrgId(req, res);
@@ -220,31 +243,159 @@ router.post('/overrides', async (req: Request, res: Response) => {
       return;
     }
 
-    const override = await prisma.scheduleOverride.create({
-      data: {
-        organizationId: orgId,
-        coachId,
-        date: parseDateOnly(body.date),
-        type: body.type,
-        startTime: body.startTime,
-        endTime: body.endTime,
-        slotDuration: body.slotDuration,
-        breakMinutes: body.breakMinutes,
-        maxCapacity: body.maxCapacity,
-        isPublic: body.type === 'OPEN'
-            ? (body.isPublic ?? false)
-            : body.type === 'VISIBLE'
-            ? true
-            : body.type === 'HIDDEN'
-            ? false
-            : body.isPublic,
-      },
-    });
+    const targetDate = parseDateOnly(body.date);
+    const createData = {
+      organizationId: orgId,
+      coachId,
+      date: targetDate,
+      type: body.type,
+      startTime: body.startTime,
+      endTime: body.endTime,
+      slotDuration: body.slotDuration,
+      breakMinutes: body.breakMinutes,
+      maxCapacity: body.maxCapacity,
+      isPublic: body.type === 'OPEN'
+          ? (body.isPublic ?? false)
+          : body.type === 'VISIBLE'
+          ? true
+          : body.type === 'HIDDEN'
+          ? false
+          : body.isPublic,
+    };
+
+    const override = body.type === 'OPEN'
+      ? await prisma.$transaction(async (tx) => {
+          const closedOverrides = await tx.scheduleOverride.findMany({
+            where: {
+              organizationId: orgId,
+              coachId,
+              date: targetDate,
+              type: 'CLOSED',
+            },
+            select: { id: true, startTime: true, endTime: true },
+          });
+          const overlappingClosedIds = closedOverrides
+            .filter((candidate) =>
+              overlapsTimeRange(
+                candidate.startTime,
+                candidate.endTime,
+                body.startTime,
+                body.endTime,
+              ),
+            )
+            .map((candidate) => candidate.id);
+
+          if (overlappingClosedIds.length > 0) {
+            await tx.scheduleOverride.deleteMany({
+              where: { id: { in: overlappingClosedIds } },
+            });
+          }
+
+          return tx.scheduleOverride.create({ data: createData });
+        })
+      : await prisma.scheduleOverride.create({ data: createData });
 
     res.status(201).json(override);
   } catch (err) {
     if (respondValidationError(res, err)) return;
     console.error('Create override error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/move-slot', async (req: Request, res: Response) => {
+  try {
+    const orgId = await requireCurrentOrgId(req, res);
+    if (!orgId) return;
+    const role = await requireOrgRole(req, res, orgId, ['OWNER', 'MANAGER', 'STAFF']);
+    if (!role) return;
+
+    const body = moveSlotSchema.parse(req.body);
+    const coachId = body.coachId || req.user!.userId;
+
+    if (role === 'STAFF' && coachId !== req.user!.userId) {
+      res.status(403).json({ error: 'Insufficient permissions' });
+      return;
+    }
+
+    const coachInOrg = await isUserInOrganization(coachId, orgId);
+    if (!coachInOrg) {
+      res.status(403).json({ error: 'Coach is not part of this organization' });
+      return;
+    }
+
+    if (timeToMinutes(body.currentStartTime) >= timeToMinutes(body.currentEndTime)) {
+      res.status(400).json({ error: '기존 시간의 시작이 종료보다 빨라야 합니다' });
+      return;
+    }
+
+    if (timeToMinutes(body.newStartTime) >= timeToMinutes(body.newEndTime)) {
+      res.status(400).json({ error: '새 시간의 시작이 종료보다 빨라야 합니다' });
+      return;
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.scheduleOverride.create({
+        data: {
+          organizationId: orgId,
+          coachId,
+          date: parseDateOnly(body.date),
+          type: 'CLOSED',
+          startTime: body.currentStartTime,
+          endTime: body.currentEndTime,
+        },
+      });
+
+      const closedOverrides = await tx.scheduleOverride.findMany({
+        where: {
+          organizationId: orgId,
+          coachId,
+          date: parseDateOnly(body.date),
+          type: 'CLOSED',
+        },
+        select: { id: true, startTime: true, endTime: true },
+      });
+      const overlappingClosedIds = closedOverrides
+        .filter(
+          (candidate) =>
+            candidate.startTime !== body.currentStartTime ||
+            candidate.endTime !== body.currentEndTime,
+        )
+        .filter((candidate) =>
+          overlapsTimeRange(
+            candidate.startTime,
+            candidate.endTime,
+            body.newStartTime,
+            body.newEndTime,
+          ),
+        )
+        .map((candidate) => candidate.id);
+
+      if (overlappingClosedIds.length > 0) {
+        await tx.scheduleOverride.deleteMany({
+          where: { id: { in: overlappingClosedIds } },
+        });
+      }
+
+      await tx.scheduleOverride.create({
+        data: {
+          organizationId: orgId,
+          coachId,
+          date: parseDateOnly(body.date),
+          type: 'OPEN',
+          startTime: body.newStartTime,
+          endTime: body.newEndTime,
+          slotDuration: body.slotDuration,
+          maxCapacity: body.maxCapacity,
+          isPublic: body.isPublic,
+        },
+      });
+    });
+
+    res.status(201).json({ message: 'Slot moved' });
+  } catch (err) {
+    if (respondValidationError(res, err)) return;
+    console.error('Move slot error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
