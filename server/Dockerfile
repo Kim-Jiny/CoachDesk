@@ -2,7 +2,8 @@
 FROM ghcr.io/cirruslabs/flutter:stable AS flutter-builder
 
 WORKDIR /flutter-app
-COPY app/pubspec.yaml app/pubspec.lock ./
+COPY app/pubspec.yaml ./
+COPY app/pubspec.lock* ./
 RUN flutter pub get
 COPY app/ ./
 
