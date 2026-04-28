@@ -63,7 +63,12 @@ services:
       - app-network
 
   coach:
-    build: ./server
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+      args:
+        COACHDESK_API_BASE_URL: ${COACHDESK_API_BASE_URL:-}
+        APPLE_WEB_SERVICE_ID: ${APPLE_WEB_SERVICE_ID:-}
     container_name: coach-desk
     restart: unless-stopped
     depends_on:
@@ -85,7 +90,9 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_ANDROID_CLIENT_ID: ${GOOGLE_ANDROID_CLIENT_ID}
       GOOGLE_IOS_CLIENT_ID: ${GOOGLE_IOS_CLIENT_ID}
+      GOOGLE_WEB_CLIENT_ID: ${GOOGLE_WEB_CLIENT_ID:-}
       APPLE_AUDIENCES: ${APPLE_AUDIENCES:-com.jiny.coachdesk}
+      SUPER_ADMIN_EMAILS: ${SUPER_ADMIN_EMAILS:-}
       FIREBASE_SERVICE_ACCOUNT: /app/firebase-service-account.json
       PORT: 3000
       NODE_ENV: production
