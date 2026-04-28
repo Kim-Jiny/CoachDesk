@@ -61,7 +61,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   title: '이름',
                   subtitle: name ?? '-',
                   onTap: isMember
-                      ? null
+                      ? () => _editMemberName(context, ref, name)
                       : () => context.push('/settings/profile'),
                 ),
                 _SettingsItem(
@@ -253,6 +253,51 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             const SizedBox(height: 32),
           ],
         ),
+      ),
+    );
+  }
+
+  Future<void> _editMemberName(
+    BuildContext context,
+    WidgetRef ref,
+    String? currentName,
+  ) async {
+    final controller = TextEditingController(text: currentName ?? '');
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('이름 변경'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 50,
+          decoration: const InputDecoration(
+            labelText: '이름',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (value) => Navigator.pop(ctx, value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            child: const Text('저장'),
+          ),
+        ],
+      ),
+    );
+    if (newName == null) return;
+
+    final result = await ref
+        .read(memberAuthProvider.notifier)
+        .updateName(newName);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(result.success ? '이름을 변경했습니다' : (result.errorMessage ?? '실패')),
       ),
     );
   }

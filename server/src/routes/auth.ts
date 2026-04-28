@@ -19,6 +19,7 @@ import {
   refreshAccessToken,
   registerMemberAccount,
   registerUserAccount,
+  updateMemberAccount,
   updateUserProfile,
 } from '../features/auth/accounts';
 import {
@@ -812,6 +813,37 @@ router.delete('/member/profile', authMiddleware, async (req: Request, res: Respo
       return;
     }
     console.error('Delete member profile error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+const updateMemberProfileSchema = z.object({
+  name: z.string().trim().min(1).max(50),
+});
+
+router.put('/member/profile', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const body = updateMemberProfileSchema.parse(req.body);
+    res.json(await updateMemberAccount({
+      memberAccountId: req.user!.userId,
+      name: body.name,
+    }));
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: err.errors });
+      return;
+    }
+    if (err instanceof AuthFlowError) {
+      if (err.code === 'MEMBER_ACCOUNT_NOT_FOUND') {
+        res.status(404).json({ error: 'Member account not found' });
+        return;
+      }
+      if (err.code === 'INVALID_NAME') {
+        res.status(400).json({ error: '이름을 입력해주세요' });
+        return;
+      }
+    }
+    console.error('Update member profile error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
