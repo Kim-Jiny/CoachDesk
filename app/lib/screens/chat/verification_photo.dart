@@ -80,6 +80,14 @@ class VerificationPhotoService {
   }
 
   static Uint8List? _drawTimestamp(Uint8List bytes, String label) {
+    try {
+      return _drawTimestampInternal(bytes, label);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Uint8List? _drawTimestampInternal(Uint8List bytes, String label) {
     final decoded = img.decodeImage(bytes);
     if (decoded == null) return null;
     final image = img.bakeOrientation(decoded);
