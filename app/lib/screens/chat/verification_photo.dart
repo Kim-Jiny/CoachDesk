@@ -97,30 +97,34 @@ class VerificationPhotoService {
         : image.width >= 700
             ? img.arial24
             : img.arial14;
-    final charWidth = font == img.arial48
-        ? 24
-        : font == img.arial24
-            ? 12
-            : 7;
-    final charHeight = font == img.arial48
-        ? 48
-        : font == img.arial24
-            ? 24
-            : 14;
     final pad = font == img.arial48 ? 12 : 8;
     final margin = font == img.arial48 ? 28 : 16;
 
-    final textWidth = label.length * charWidth;
-    final boxX = image.width - textWidth - pad * 2 - margin;
-    final boxY = image.height - charHeight - pad * 2 - margin;
+    // 실제 폰트 메트릭으로 정확한 박스 크기 계산
+    var textWidth = 0;
+    for (final char in label.split('')) {
+      textWidth += font.characterXAdvance(char);
+    }
+    final lineHeight = font.lineHeight > 0
+        ? font.lineHeight
+        : font == img.arial48
+            ? 48
+            : font == img.arial24
+                ? 24
+                : 14;
+
+    final boxRight = image.width - margin;
+    final boxBottom = image.height - margin;
+    final boxX = boxRight - textWidth - pad * 2;
+    final boxY = boxBottom - lineHeight - pad * 2;
 
     img.fillRect(
       image,
       x1: boxX,
       y1: boxY,
-      x2: boxX + textWidth + pad * 2,
-      y2: boxY + charHeight + pad * 2,
-      color: img.ColorRgba8(0, 0, 0, 160),
+      x2: boxRight,
+      y2: boxBottom,
+      color: img.ColorRgba8(0, 0, 0, 170),
     );
     img.drawString(
       image,

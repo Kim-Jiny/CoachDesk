@@ -299,237 +299,548 @@ class _ReservationFormScreenState extends ConsumerState<ReservationFormScreen> {
   Widget build(BuildContext context) {
     final memberState = ref.watch(memberProvider);
     final selectedMember = _resolveSelectedMember(memberState.members);
+    final dateLabel = DateFormat('yyyy년 M월 d일 (E)', 'ko').format(_selectedDate);
+    final selectedSlotCoachName = _selectedSlotCoachName();
 
-    return DismissKeyboardOnTap(child: Scaffold(
-      appBar: AppBar(title: const Text('예약 등록')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Date
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.calendar_today),
-                title: const Text('날짜'),
-                subtitle: Text(
-                  DateFormat('yyyy년 M월 d일 (E)', 'ko').format(_selectedDate),
-                ),
-                onTap: () async {
-                  final date = await showDatePicker(
-                    context: context,
-                    initialDate: _selectedDate,
-                    firstDate: DateTime.now().subtract(
-                      const Duration(days: 30),
-                    ),
-                    lastDate: DateTime.now().add(const Duration(days: 365)),
-                  );
-                  if (date != null) {
-                    setState(() => _selectedDate = date);
-                    await _loadAvailableSlots();
-                  }
-                },
-              ),
-              const Divider(),
-
-              Row(
-                children: [
-                  const Icon(Icons.event_available, size: 18),
-                  const SizedBox(width: 8),
-                  const Expanded(
-                    child: Text(
-                      '오픈된 시간 선택',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () =>
-                        setState(() => _useManualTime = !_useManualTime),
-                    child: Text(_useManualTime ? '직접 입력 중' : '직접 입력'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              if (_isLoadingSlots)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  child: Center(child: CircularProgressIndicator()),
-                )
-              else if (_availableSlots.isEmpty)
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    '선택한 날짜에 오픈된 시간대가 없습니다. 직접 입력으로 예약할 수 있습니다.',
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
-                  ),
-                )
-              else
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    ..._availableSlots.map((slot) {
-                      final isSelected =
-                          !_useManualTime &&
-                          _coachId == slot.coachId &&
-                          _formatTime(_startTime) == slot.startTime &&
-                          _formatTime(_endTime) == slot.endTime;
-                      return ChoiceChip(
-                        label: Text(
-                          '${slot.startTime}-${slot.endTime}\n${slot.coachName}',
-                          textAlign: TextAlign.center,
-                        ),
-                        selected: isSelected,
-                        onSelected: (_) => _applySlot(slot),
-                        selectedColor: AppTheme.primaryColor.withValues(
-                          alpha: 0.18,
-                        ),
-                      );
-                    }),
-                    ChoiceChip(
-                      label: const Text('직접 입력'),
-                      selected: _useManualTime,
-                      onSelected: (_) => setState(() => _useManualTime = true),
-                    ),
-                  ],
-                ),
-              const SizedBox(height: 12),
-
-              // Time
-              if (_useManualTime)
+    return DismissKeyboardOnTap(
+      child: Scaffold(
+        appBar: AppBar(title: const Text('회원 예약 등록')),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
                 Row(
                   children: [
-                    Expanded(
-                      child: ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.access_time),
-                        title: const Text('시작'),
-                        subtitle: Text(_formatTime(_startTime)),
-                        onTap: () async {
-                          final time = await showTimePicker(
-                            context: context,
-                            initialTime: _startTime,
-                          );
-                          if (time != null) setState(() => _startTime = time);
-                        },
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: const Icon(
+                        Icons.person_add_alt_rounded,
+                        color: AppTheme.primaryColor,
                       ),
                     ),
+                    const SizedBox(width: 12),
                     Expanded(
-                      child: ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.access_time),
-                        title: const Text('종료'),
-                        subtitle: Text(_formatTime(_endTime)),
-                        onTap: () async {
-                          final time = await showTimePicker(
-                            context: context,
-                            initialTime: _endTime,
-                          );
-                          if (time != null) setState(() => _endTime = time);
-                        },
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            '회원 예약 등록',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            dateLabel,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
-                )
-              else
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.schedule_rounded),
-                  title: Text(
-                    '${_formatTime(_startTime)} - ${_formatTime(_endTime)}',
-                  ),
-                  subtitle: Text(_selectedSlotCoachName() ?? '선택한 오픈 시간'),
                 ),
-              const Divider(),
-
-              // Member selection
-              const SizedBox(height: 8),
-              DropdownButtonFormField<Member>(
-                decoration: const InputDecoration(
-                  labelText: '회원 선택 *',
-                  prefixIcon: Icon(Icons.person_outline),
-                ),
-                initialValue: selectedMember,
-                items: memberState.members.map((m) {
-                  return DropdownMenuItem(
-                    value: m,
-                    child: Text(
-                      '${m.name}${m.phone != null ? ' (${m.phone})' : ''}',
-                    ),
-                  );
-                }).toList(),
-                onChanged: (v) => setState(() => _selectedMember = v),
-                validator: (v) => v == null ? '회원을 선택하세요' : null,
-              ),
-              if (_restoredRecentDefaults && selectedMember != null) ...[
-                const SizedBox(height: 10),
+                const SizedBox(height: 18),
                 Container(
-                  width: double.infinity,
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: Colors.blueGrey.shade50,
-                    borderRadius: BorderRadius.circular(12),
+                    color: AppTheme.primaryColor.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: AppTheme.primaryColor.withValues(alpha: 0.16),
+                    ),
                   ),
                   child: Row(
                     children: [
                       Icon(
-                        Icons.history,
-                        size: 18,
-                        color: Colors.blueGrey.shade400,
+                        Icons.info_outline_rounded,
+                        size: 20,
+                        color: Colors.indigo.shade700,
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          '최근 예약 설정을 불러왔습니다',
+                          '오픈된 빈 타임을 바로 예약으로 연결하거나, 필요하면 시간을 직접 입력해서 등록할 수 있어요.',
                           style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.blueGrey.shade600,
+                            height: 1.35,
+                            fontSize: 13,
+                            color: Colors.indigo.shade900,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
                     ],
                   ),
                 ),
+                const SizedBox(height: 18),
+                _ReservationSectionCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _ReservationSectionHeader(
+                        icon: Icons.calendar_today_rounded,
+                        title: '예약 날짜',
+                        actionLabel: '변경',
+                        onActionTap: () async {
+                          final date = await showDatePicker(
+                            context: context,
+                            initialDate: _selectedDate,
+                            firstDate: DateTime.now().subtract(
+                              const Duration(days: 30),
+                            ),
+                            lastDate: DateTime.now().add(
+                              const Duration(days: 365),
+                            ),
+                          );
+                          if (date != null) {
+                            setState(() => _selectedDate = date);
+                            await _loadAvailableSlots();
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        dateLabel,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _ReservationSectionCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _ReservationSectionHeader(
+                        icon: Icons.event_available_rounded,
+                        title: '예약 시간 선택',
+                        actionLabel: _useManualTime ? '오픈 타임 사용' : '직접 입력',
+                        onActionTap: () =>
+                            setState(() => _useManualTime = !_useManualTime),
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          ChoiceChip(
+                            label: const Text('오픈 타임'),
+                            selected: !_useManualTime,
+                            onSelected: (_) =>
+                                setState(() => _useManualTime = false),
+                          ),
+                          ChoiceChip(
+                            label: const Text('직접 입력'),
+                            selected: _useManualTime,
+                            onSelected: (_) =>
+                                setState(() => _useManualTime = true),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      if (_isLoadingSlots)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          child: Center(child: CircularProgressIndicator()),
+                        )
+                      else if (_availableSlots.isEmpty)
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade50,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.grey.shade200),
+                          ),
+                          child: Text(
+                            '선택한 날짜에 오픈된 시간대가 없습니다. 직접 입력으로 예약할 수 있습니다.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade700,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        )
+                      else
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: [
+                            ..._availableSlots.map((slot) {
+                              final isSelected =
+                                  !_useManualTime &&
+                                  _coachId == slot.coachId &&
+                                  _formatTime(_startTime) == slot.startTime &&
+                                  _formatTime(_endTime) == slot.endTime;
+                              return ChoiceChip(
+                                label: Text(
+                                  '${slot.startTime}-${slot.endTime}\n${slot.coachName}',
+                                  textAlign: TextAlign.center,
+                                ),
+                                selected: isSelected,
+                                onSelected: (_) => _applySlot(slot),
+                                labelStyle: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: isSelected
+                                      ? AppTheme.primaryColor
+                                      : Colors.grey.shade800,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                  side: BorderSide(
+                                    color: isSelected
+                                        ? AppTheme.primaryColor.withValues(
+                                            alpha: 0.24,
+                                          )
+                                        : Colors.grey.shade200,
+                                  ),
+                                ),
+                                backgroundColor: Colors.white,
+                                selectedColor: AppTheme.primaryColor.withValues(
+                                  alpha: 0.12,
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 10,
+                                ),
+                              );
+                            }),
+                          ],
+                        ),
+                      const SizedBox(height: 14),
+                      if (_useManualTime)
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _ReservationTimePickCard(
+                                label: '시작',
+                                value: _formatTime(_startTime),
+                                icon: Icons.play_arrow_rounded,
+                                onTap: () async {
+                                  final time = await showTimePicker(
+                                    context: context,
+                                    initialTime: _startTime,
+                                  );
+                                  if (time != null) {
+                                    setState(() => _startTime = time);
+                                  }
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _ReservationTimePickCard(
+                                label: '종료',
+                                value: _formatTime(_endTime),
+                                icon: Icons.flag_rounded,
+                                onTap: () async {
+                                  final time = await showTimePicker(
+                                    context: context,
+                                    initialTime: _endTime,
+                                  );
+                                  if (time != null) {
+                                    setState(() => _endTime = time);
+                                  }
+                                },
+                              ),
+                            ),
+                          ],
+                        )
+                      else
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(color: Colors.grey.shade200),
+                            boxShadow: AppTheme.softShadow,
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primaryColor.withValues(
+                                    alpha: 0.08,
+                                  ),
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                child: const Icon(
+                                  Icons.schedule_rounded,
+                                  color: AppTheme.primaryColor,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '${_formatTime(_startTime)} - ${_formatTime(_endTime)}',
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      selectedSlotCoachName ?? '선택한 오픈 시간',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: Colors.grey.shade600,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _ReservationSectionCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const _ReservationSectionHeader(
+                        icon: Icons.person_outline_rounded,
+                        title: '회원 선택',
+                      ),
+                      const SizedBox(height: 14),
+                      DropdownButtonFormField<Member>(
+                        decoration: const InputDecoration(
+                          labelText: '회원 선택 *',
+                          prefixIcon: Icon(Icons.person_outline),
+                        ),
+                        initialValue: selectedMember,
+                        items: memberState.members.map((m) {
+                          return DropdownMenuItem(
+                            value: m,
+                            child: Text(
+                              '${m.name}${m.phone != null ? ' (${m.phone})' : ''}',
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (v) => setState(() => _selectedMember = v),
+                        validator: (v) => v == null ? '회원을 선택하세요' : null,
+                      ),
+                      if (_restoredRecentDefaults &&
+                          selectedMember != null) ...[
+                        const SizedBox(height: 10),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: Colors.blueGrey.shade50,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.history,
+                                size: 18,
+                                color: Colors.blueGrey.shade400,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '최근 예약 설정을 불러왔습니다',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.blueGrey.shade600,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _ReservationSectionCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const _ReservationSectionHeader(
+                        icon: Icons.edit_note_rounded,
+                        title: '메모',
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: _quickMemoController,
+                        decoration: const InputDecoration(
+                          labelText: '카드 메모',
+                          helperText: '스케줄 카드에서 바로 보이는 짧은 메모',
+                          prefixIcon: Icon(Icons.short_text_rounded),
+                        ),
+                        maxLines: 2,
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _memoController,
+                        decoration: const InputDecoration(
+                          labelText: '상세 메모',
+                          helperText: '예약 상세/완료 시 참고할 메모',
+                          prefixIcon: Icon(Icons.note_outlined),
+                        ),
+                        maxLines: 2,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => context.pop(),
+                        child: const Text('취소'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: FilledButton.icon(
+                        onPressed: _save,
+                        icon: const Icon(Icons.check_circle_outline_rounded),
+                        label: const Text('회원 예약 등록'),
+                      ),
+                    ),
+                  ],
+                ),
               ],
-              const SizedBox(height: 16),
-
-              TextFormField(
-                controller: _quickMemoController,
-                decoration: const InputDecoration(
-                  labelText: '카드 메모',
-                  helperText: '스케줄 카드에서 바로 보이는 짧은 메모',
-                  prefixIcon: Icon(Icons.short_text_rounded),
-                ),
-                maxLines: 2,
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _memoController,
-                decoration: const InputDecoration(
-                  labelText: '상세 메모',
-                  helperText: '예약 상세/완료 시 참고할 메모',
-                  prefixIcon: Icon(Icons.note_outlined),
-                ),
-                maxLines: 2,
-              ),
-              const SizedBox(height: 32),
-
-              ElevatedButton(onPressed: _save, child: const Text('예약 등록')),
-            ],
+            ),
           ),
         ),
       ),
-    ));
+    );
+  }
+}
+
+class _ReservationSectionCard extends StatelessWidget {
+  final Widget child;
+
+  const _ReservationSectionCard({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: AppTheme.softShadow,
+      ),
+      child: child,
+    );
+  }
+}
+
+class _ReservationSectionHeader extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String? actionLabel;
+  final VoidCallback? onActionTap;
+
+  const _ReservationSectionHeader({
+    required this.icon,
+    required this.title,
+    this.actionLabel,
+    this.onActionTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: AppTheme.primaryColor),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            title,
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+          ),
+        ),
+        if (actionLabel != null && onActionTap != null)
+          TextButton(onPressed: onActionTap, child: Text(actionLabel!)),
+      ],
+    );
+  }
+}
+
+class _ReservationTimePickCard extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _ReservationTimePickCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Colors.grey.shade200),
+          boxShadow: AppTheme.softShadow,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, size: 18, color: AppTheme.primaryColor),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey.shade600,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              value,
+              style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

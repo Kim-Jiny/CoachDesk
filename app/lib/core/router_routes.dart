@@ -26,6 +26,7 @@ import '../screens/members/member_list_screen.dart';
 import '../screens/notifications/member_notification_screen.dart';
 import '../screens/notifications/notification_screen.dart';
 import '../screens/packages/assign_package_screen.dart';
+import '../screens/packages/member_package_summary_screen.dart';
 import '../screens/packages/package_form_screen.dart';
 import '../screens/packages/package_list_screen.dart';
 import '../screens/report/attendance_report_screen.dart';
@@ -48,10 +49,7 @@ List<RouteBase> buildAppRoutes({
   required Map<int, GlobalKey<NavigatorState>> shellBranchKeys,
 }) {
   return [
-    GoRoute(
-      path: '/splash',
-      builder: (context, state) => const SplashScreen(),
-    ),
+    GoRoute(path: '/splash', builder: (context, state) => const SplashScreen()),
     GoRoute(
       path: '/auth-select',
       builder: (context, state) => const AuthSelectScreen(),
@@ -177,6 +175,11 @@ List<RouteBase> buildAppRoutes({
           memberName: data['memberName']!,
         );
       },
+    ),
+    GoRoute(
+      path: '/packages/members',
+      parentNavigatorKey: rootNavigatorKey,
+      builder: (context, state) => const MemberPackageSummaryScreen(),
     ),
     GoRoute(
       path: '/sessions',

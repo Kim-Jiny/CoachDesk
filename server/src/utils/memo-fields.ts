@@ -54,7 +54,7 @@ export function encodeMemoFields({
   const normalizedMemo = memo?.trim() || '';
   const normalizedOriginalStartTime = originalStartTime?.trim() || '';
   const normalizedOriginalEndTime = originalEndTime?.trim() || '';
-  const normalizedDelayMinutes = typeof delayMinutes === 'number' && delayMinutes > 0
+  const normalizedDelayMinutes = typeof delayMinutes === 'number' && delayMinutes !== 0
     ? delayMinutes
     : undefined;
 

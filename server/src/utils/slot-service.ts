@@ -19,9 +19,14 @@ type SlotResult = {
   blockedOverrideId?: string;
   visibilityOverrideId?: string;
   coachName?: string;
+  sourceType?: 'SCHEDULE' | 'OPEN_OVERRIDE';
+  sourceScheduleId?: string;
+  sourceOverrideId?: string;
 };
 
 type ScheduleLike = {
+  id?: string;
+  sourceType?: 'SCHEDULE' | 'OPEN_OVERRIDE';
   coachId: string;
   startTime: string;
   endTime: string;
@@ -135,6 +140,8 @@ export async function getAvailableSlots(params: {
       if (!override.startTime || !override.endTime) return [];
       return generateSlotsFromSchedule(
         {
+          id: override.id,
+          sourceType: 'OPEN_OVERRIDE',
           coachId: override.coachId,
           startTime: override.startTime,
           endTime: override.endTime,
@@ -241,6 +248,9 @@ function generateSlotsFromSchedule(
       maxCapacity: schedule.maxCapacity,
       isPublic: schedule.isPublic ?? false,
       baseIsPublic: schedule.isPublic ?? false,
+      sourceType: schedule.sourceType ?? 'SCHEDULE',
+      sourceScheduleId: schedule.sourceType != 'OPEN_OVERRIDE' ? schedule.id : undefined,
+      sourceOverrideId: schedule.sourceType == 'OPEN_OVERRIDE' ? schedule.id : undefined,
       ...(includeCoachNames ? { coachName: schedule.coach?.name ?? '' } : {}),
     });
   }

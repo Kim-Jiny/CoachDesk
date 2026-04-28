@@ -1,3 +1,5 @@
+import 'package.dart';
+
 class MemberGroup {
   final String id;
   final String organizationId;
@@ -37,6 +39,7 @@ class Member {
   final String status;
   final String packageStatus;
   final String packageStatusLabel;
+  final List<MemberPackage> memberPackages;
   final bool hasMemberAccount;
   final String memberSourceLabel;
   final String memberAccessLabel;
@@ -58,6 +61,7 @@ class Member {
     required this.status,
     required this.packageStatus,
     required this.packageStatusLabel,
+    this.memberPackages = const [],
     required this.hasMemberAccount,
     required this.memberSourceLabel,
     required this.memberAccessLabel,
@@ -87,6 +91,9 @@ class Member {
       status: json['status'] as String? ?? 'ACTIVE',
       packageStatus: json['packageStatus'] as String? ?? 'GENERAL_MEMBER',
       packageStatusLabel: json['packageStatusLabel'] as String? ?? '일반 회원',
+      memberPackages: (json['memberPackages'] as List? ?? [])
+          .map((item) => MemberPackage.fromJson(item as Map<String, dynamic>))
+          .toList(),
       hasMemberAccount: json['hasMemberAccount'] as bool? ?? false,
       memberSourceLabel: json['memberSourceLabel'] as String? ?? '관리자 등록 회원',
       memberAccessLabel: json['memberAccessLabel'] as String? ?? '채팅 미연동',
@@ -107,6 +114,7 @@ class Member {
     'status': status,
     'packageStatus': packageStatus,
     'packageStatusLabel': packageStatusLabel,
+    'memberPackages': memberPackages.map((item) => item.id).toList(),
     'hasMemberAccount': hasMemberAccount,
     'memberSourceLabel': memberSourceLabel,
     'memberAccessLabel': memberAccessLabel,
@@ -123,6 +131,7 @@ class Member {
     String? status,
     String? packageStatus,
     String? packageStatusLabel,
+    List<MemberPackage>? memberPackages,
     bool? hasMemberAccount,
     String? memberSourceLabel,
     String? memberAccessLabel,
@@ -143,6 +152,7 @@ class Member {
       status: status ?? this.status,
       packageStatus: packageStatus ?? this.packageStatus,
       packageStatusLabel: packageStatusLabel ?? this.packageStatusLabel,
+      memberPackages: memberPackages ?? this.memberPackages,
       hasMemberAccount: hasMemberAccount ?? this.hasMemberAccount,
       memberSourceLabel: memberSourceLabel ?? this.memberSourceLabel,
       memberAccessLabel: memberAccessLabel ?? this.memberAccessLabel,

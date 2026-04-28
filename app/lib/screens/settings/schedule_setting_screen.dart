@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -27,8 +28,10 @@ class _ScheduleSettingScreenState extends ConsumerState<ScheduleSettingScreen> {
     _loadData();
   }
 
-  Future<void> _loadData() async {
-    setState(() => _isLoading = true);
+  Future<void> _loadData({bool silent = false}) async {
+    if (!silent) {
+      setState(() => _isLoading = true);
+    }
     try {
       final dio = ref.read(dioProvider);
       final now = DateTime.now();
@@ -50,10 +53,10 @@ class _ScheduleSettingScreenState extends ConsumerState<ScheduleSettingScreen> {
               (json) => ScheduleOverride.fromJson(json as Map<String, dynamic>),
             )
             .toList();
-        _isLoading = false;
+        if (!silent) _isLoading = false;
       });
     } catch (_) {
-      setState(() => _isLoading = false);
+      if (!silent) setState(() => _isLoading = false);
     }
   }
 
@@ -67,7 +70,7 @@ class _ScheduleSettingScreenState extends ConsumerState<ScheduleSettingScreen> {
     try {
       final dio = ref.read(dioProvider);
       await dio.post('/schedules', data: result);
-      _loadData();
+      _loadData(silent: true);
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -87,7 +90,7 @@ class _ScheduleSettingScreenState extends ConsumerState<ScheduleSettingScreen> {
     try {
       final dio = ref.read(dioProvider);
       await dio.put('/schedules/${schedule['id']}', data: result);
-      _loadData();
+      _loadData(silent: true);
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -117,24 +120,53 @@ class _ScheduleSettingScreenState extends ConsumerState<ScheduleSettingScreen> {
     );
     if (confirmed != true) return;
 
+    final previous = List<dynamic>.from(_schedules);
+    setState(() {
+      _schedules.removeWhere((s) => (s as Map<String, dynamic>)['id'] == id);
+    });
+
     try {
       final dio = ref.read(dioProvider);
       await dio.delete('/schedules/$id');
-      _loadData();
-    } catch (_) {}
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _schedules = previous);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('삭제에 실패했습니다')));
+    }
   }
 
   Future<void> _addOverride() async {
-    final result = await showDialog<Map<String, dynamic>>(
+    final dio = ref.read(dioProvider);
+    final result = await showDialog<Object?>(
       context: context,
-      builder: (context) => const _OverrideDialog(),
+      builder: (context) => _OverrideDialog(dio: dio),
     );
     if (result == null) return;
 
     try {
-      final dio = ref.read(dioProvider);
-      await dio.post('/schedules/overrides', data: result);
-      await _loadData();
+      if (result is List) {
+        for (final action in result) {
+          final item = Map<String, dynamic>.from(action as Map);
+          if (item['mode'] == 'delete') {
+            await dio.delete('/schedules/overrides/${item['overrideId']}');
+          } else {
+            await dio.post(
+              '/schedules/overrides',
+              data: Map<String, dynamic>.from(
+                item['data'] as Map<String, dynamic>,
+              ),
+            );
+          }
+        }
+      } else {
+        await dio.post(
+          '/schedules/overrides',
+          data: Map<String, dynamic>.from(result as Map),
+        );
+      }
+      await _loadData(silent: true);
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -163,12 +195,17 @@ class _ScheduleSettingScreenState extends ConsumerState<ScheduleSettingScreen> {
     );
     if (confirmed != true) return;
 
+    final previous = List<ScheduleOverride>.from(_overrides);
+    setState(() {
+      _overrides.removeWhere((o) => o.id == id);
+    });
+
     try {
       final dio = ref.read(dioProvider);
       await dio.delete('/schedules/overrides/$id');
-      await _loadData();
     } catch (_) {
       if (!mounted) return;
+      setState(() => _overrides = previous);
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('예외 일정 삭제에 실패했습니다')));
@@ -177,180 +214,193 @@ class _ScheduleSettingScreenState extends ConsumerState<ScheduleSettingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return DismissKeyboardOnTap(child: Scaffold(
-      appBar: AppBar(title: const Text('수업시간 설정')),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _loadData,
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 132),
-                children: [
-                  Text(
-                    '주간 가용시간',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
+    return DismissKeyboardOnTap(
+      child: Scaffold(
+        appBar: AppBar(title: const Text('수업시간 설정')),
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : RefreshIndicator(
+                onRefresh: _loadData,
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 132),
+                  children: [
+                    Text(
+                      '주간 가용시간',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  if (_schedules.isEmpty)
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Text(
-                        '설정된 가용시간이 없습니다',
-                        style: TextStyle(color: Colors.grey.shade500),
-                      ),
-                    )
-                  else
-                    ..._schedules.map((schedule) {
-                      final s = schedule as Map<String, dynamic>;
-                      final isPublic = s['isPublic'] as bool? ?? false;
-                      return Card(
-                        child: ListTile(
-                          leading: CircleAvatar(
-                            child: Text(_dayNames[s['dayOfWeek'] as int]),
-                          ),
-                          title: Text('${s['startTime']} - ${s['endTime']}'),
-                          subtitle: Text(
-                            '${s['slotDuration']}분 수업'
-                            '${((s['breakMinutes'] as int?) ?? 0) > 0 ? ' · 쉬는시간 ${s['breakMinutes']}분' : ''}'
-                            ' · 한 타임당 정원 ${s['maxCapacity']}명'
-                            ' · ${isPublic ? '공개' : '비공개'}',
-                          ),
-                          trailing: IconButton(
-                            icon: const Icon(
-                              Icons.delete_outline,
-                              color: Colors.red,
-                            ),
-                            onPressed: () => _deleteSchedule(s['id'] as String),
-                          ),
-                          onTap: () => _editSchedule(s),
+                    const SizedBox(height: 8),
+                    if (_schedules.isEmpty)
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
                         ),
-                      );
-                    }),
-                  const SizedBox(height: 24),
-                  Row(
-                    children: [
-                      Expanded(
                         child: Text(
-                          '예외 일정',
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.bold),
+                          '설정된 가용시간이 없습니다',
+                          style: TextStyle(color: Colors.grey.shade500),
                         ),
-                      ),
-                      TextButton.icon(
-                        onPressed: _addOverride,
-                        icon: const Icon(
-                          Icons.event_available_outlined,
-                          size: 18,
+                      )
+                    else
+                      ..._schedules.map((schedule) {
+                        final s = schedule as Map<String, dynamic>;
+                        final isPublic = s['isPublic'] as bool? ?? false;
+                        return Card(
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              child: Text(_dayNames[s['dayOfWeek'] as int]),
+                            ),
+                            title: Text('${s['startTime']} - ${s['endTime']}'),
+                            subtitle: Text(
+                              '${s['slotDuration']}분 수업'
+                              '${((s['breakMinutes'] as int?) ?? 0) > 0 ? ' · 쉬는시간 ${s['breakMinutes']}분' : ''}'
+                              ' · 한 타임당 정원 ${s['maxCapacity']}명'
+                              ' · ${isPublic ? '공개' : '비공개'}',
+                            ),
+                            trailing: IconButton(
+                              icon: const Icon(
+                                Icons.delete_outline,
+                                color: Colors.red,
+                              ),
+                              onPressed: () =>
+                                  _deleteSchedule(s['id'] as String),
+                            ),
+                            onTap: () => _editSchedule(s),
+                          ),
+                        );
+                      }),
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '예외 일정',
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.bold),
+                          ),
                         ),
-                        label: const Text('예외 추가'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  if (_overrides.isEmpty)
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: Text(
-                        '등록된 예외 일정이 없습니다',
-                        style: TextStyle(color: Colors.grey.shade500),
-                      ),
-                    )
-                  else
-                    ..._overrides.map((override) {
-                      final isOpen = override.type == 'OPEN';
-                      final isVisibility =
-                          override.type == 'VISIBLE' ||
-                          override.type == 'HIDDEN';
-                      return Card(
-                        child: ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: isOpen
-                                ? Colors.green.shade100
-                                : isVisibility
-                                ? Colors.blue.shade100
-                                : Colors.red.shade100,
-                            child: Icon(
-                              isOpen
-                                  ? Icons.event_available
-                                  : override.type == 'VISIBLE'
-                                  ? Icons.visibility_outlined
-                                  : override.type == 'HIDDEN'
-                                  ? Icons.visibility_off_outlined
-                                  : Icons.block,
-                              color: isOpen
-                                  ? Colors.green.shade700
+                        TextButton.icon(
+                          onPressed: _addOverride,
+                          icon: const Icon(
+                            Icons.event_available_outlined,
+                            size: 18,
+                          ),
+                          label: const Text('예외 추가'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    if (_overrides.isEmpty)
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: Text(
+                          '등록된 예외 일정이 없습니다',
+                          style: TextStyle(color: Colors.grey.shade500),
+                        ),
+                      )
+                    else
+                      ..._overrides.map((override) {
+                        final isOpen = override.type == 'OPEN';
+                        final isVisibility =
+                            override.type == 'VISIBLE' ||
+                            override.type == 'HIDDEN';
+                        final isPartialClosed =
+                            override.type == 'CLOSED' &&
+                            override.startTime != null &&
+                            override.endTime != null;
+                        return Card(
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: isOpen
+                                  ? Colors.green.shade100
                                   : isVisibility
-                                  ? Colors.blue.shade700
-                                  : Colors.red.shade700,
+                                  ? Colors.blue.shade100
+                                  : Colors.red.shade100,
+                              child: Icon(
+                                isOpen
+                                    ? Icons.event_available
+                                    : override.type == 'VISIBLE'
+                                    ? Icons.visibility_outlined
+                                    : override.type == 'HIDDEN'
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.block,
+                                color: isOpen
+                                    ? Colors.green.shade700
+                                    : isVisibility
+                                    ? Colors.blue.shade700
+                                    : Colors.red.shade700,
+                              ),
+                            ),
+                            title: Text(
+                              '${DateFormat('M월 d일 (E)', 'ko').format(override.date)} ${isOpen
+                                  ? '추가 오픈'
+                                  : override.type == 'VISIBLE'
+                                  ? '공개 전환'
+                                  : override.type == 'HIDDEN'
+                                  ? '비공개 전환'
+                                  : isPartialClosed
+                                  ? '타임 삭제'
+                                  : '휴무'}',
+                            ),
+                            subtitle: Text(
+                              isOpen
+                                  ? '${override.startTime} - ${override.endTime}'
+                                        ' / ${override.slotDuration ?? 60}분 수업'
+                                        '${(override.breakMinutes ?? 0) > 0 ? ' / 쉬는시간 ${override.breakMinutes}분' : ''}'
+                                        ' / 한 타임당 정원 ${override.maxCapacity ?? 1}명'
+                                        ' / ${override.isPublic == true ? '공개' : '비공개'}'
+                                  : isVisibility
+                                  ? '${override.startTime} - ${override.endTime} / ${override.type == 'VISIBLE' ? '해당 시간만 공개' : '해당 시간만 비공개'}'
+                                  : isPartialClosed
+                                  ? '${override.startTime} - ${override.endTime} / 해당 시간만 삭제'
+                                  : '해당 날짜 예약 불가',
+                            ),
+                            trailing: IconButton(
+                              icon: const Icon(
+                                Icons.delete_outline,
+                                color: Colors.red,
+                              ),
+                              onPressed: () => _deleteOverride(override.id),
                             ),
                           ),
-                          title: Text(
-                            '${DateFormat('M월 d일 (E)', 'ko').format(override.date)} ${isOpen
-                                ? '추가 오픈'
-                                : override.type == 'VISIBLE'
-                                ? '공개 전환'
-                                : override.type == 'HIDDEN'
-                                ? '비공개 전환'
-                                : '휴무'}',
-                          ),
-                          subtitle: Text(
-                            isOpen
-                                ? '${override.startTime} - ${override.endTime}'
-                                      ' / ${override.slotDuration ?? 60}분 수업'
-                                      '${(override.breakMinutes ?? 0) > 0 ? ' / 쉬는시간 ${override.breakMinutes}분' : ''}'
-                                      ' / 한 타임당 정원 ${override.maxCapacity ?? 1}명'
-                                      ' / ${override.isPublic == true ? '공개' : '비공개'}'
-                                : isVisibility
-                                ? '${override.startTime} - ${override.endTime} / ${override.type == 'VISIBLE' ? '해당 시간만 공개' : '해당 시간만 비공개'}'
-                                : '해당 날짜 예약 불가',
-                          ),
-                          trailing: IconButton(
-                            icon: const Icon(
-                              Icons.delete_outline,
-                              color: Colors.red,
-                            ),
-                            onPressed: () => _deleteOverride(override.id),
-                          ),
-                        ),
-                      );
-                    }),
-                ],
+                        );
+                      }),
+                  ],
+                ),
               ),
+        floatingActionButton: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            FloatingActionButton.small(
+              heroTag: 'override_fab',
+              onPressed: _addOverride,
+              child: const Icon(Icons.event_available),
             ),
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          FloatingActionButton.small(
-            heroTag: 'override_fab',
-            onPressed: _addOverride,
-            child: const Icon(Icons.event_available),
-          ),
-          const SizedBox(height: 12),
-          FloatingActionButton.extended(
-            heroTag: 'schedule_fab',
-            onPressed: _addSchedule,
-            icon: const Icon(Icons.add),
-            label: const Text('수업시간 추가'),
-          ),
-        ],
+            const SizedBox(height: 12),
+            FloatingActionButton.extended(
+              heroTag: 'schedule_fab',
+              onPressed: _addSchedule,
+              icon: const Icon(Icons.add),
+              label: const Text('수업시간 추가'),
+            ),
+          ],
+        ),
       ),
-    ));
+    );
   }
 }
 
 class _OverrideDialog extends StatefulWidget {
-  const _OverrideDialog();
+  final Dio dio;
+
+  const _OverrideDialog({required this.dio});
 
   @override
   State<_OverrideDialog> createState() => _OverrideDialogState();
@@ -365,9 +415,258 @@ class _OverrideDialogState extends State<_OverrideDialog> {
   int _breakMinutes = 0;
   int _maxCapacity = 1;
   bool _isPublic = false;
+  bool _isLoadingSlots = false;
+  String? _slotLoadError;
+  List<Map<String, dynamic>> _visibilityCandidates = [];
+  final Set<String> _selectedVisibilitySlotKeys = <String>{};
 
   String _fmt(TimeOfDay t) =>
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVisibilityCandidates();
+  }
+
+  String _slotKey(Map<String, dynamic> slot) =>
+      '${slot['coachId']}|${slot['startTime']}|${slot['endTime']}';
+
+  bool get _isVisibilityType => _type == 'VISIBLE' || _type == 'HIDDEN';
+
+  Future<void> _loadVisibilityCandidates() async {
+    if (!_isVisibilityType) {
+      if (mounted) {
+        setState(() {
+          _isLoadingSlots = false;
+          _slotLoadError = null;
+          _visibilityCandidates = [];
+          _selectedVisibilitySlotKeys.clear();
+        });
+      }
+      return;
+    }
+
+    setState(() {
+      _isLoadingSlots = true;
+      _slotLoadError = null;
+    });
+
+    try {
+      final response = await widget.dio.get(
+        '/schedules/slots',
+        queryParameters: {
+          'date': DateFormat('yyyy-MM-dd').format(_date),
+          'includePast': true,
+        },
+      );
+      final rawSlots = (response.data as List)
+          .map((item) => Map<String, dynamic>.from(item as Map))
+          .toList();
+      final candidates =
+          rawSlots.where((slot) {
+            final isPublic = slot['isPublic'] == true;
+            return _type == 'VISIBLE' ? !isPublic : isPublic;
+          }).toList()..sort((left, right) {
+            final coachCompare = (left['coachName'] as String? ?? '').compareTo(
+              right['coachName'] as String? ?? '',
+            );
+            if (coachCompare != 0) return coachCompare;
+            final timeCompare = (left['startTime'] as String).compareTo(
+              right['startTime'] as String,
+            );
+            if (timeCompare != 0) return timeCompare;
+            return (left['endTime'] as String).compareTo(
+              right['endTime'] as String,
+            );
+          });
+
+      if (!mounted) return;
+      setState(() {
+        _isLoadingSlots = false;
+        _visibilityCandidates = candidates;
+        _selectedVisibilitySlotKeys
+          ..clear()
+          ..addAll(candidates.map(_slotKey));
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingSlots = false;
+        _slotLoadError = '시간대를 불러오지 못했습니다';
+        _visibilityCandidates = [];
+        _selectedVisibilitySlotKeys.clear();
+      });
+    }
+  }
+
+  List<Map<String, dynamic>> _buildVisibilityOverrideActions() {
+    final selectedSlots = _visibilityCandidates.where(
+      (slot) => _selectedVisibilitySlotKeys.contains(_slotKey(slot)),
+    );
+    final seenDeleteOverrideIds = <String>{};
+
+    return selectedSlots
+        .map((slot) {
+          final visibilityOverrideId = slot['visibilityOverrideId'] as String?;
+          final baseIsPublic = slot['baseIsPublic'] == true;
+
+          final shouldDeleteOverride =
+              visibilityOverrideId != null &&
+              visibilityOverrideId.isNotEmpty &&
+              ((_type == 'VISIBLE' && baseIsPublic) ||
+                  (_type == 'HIDDEN' && !baseIsPublic));
+
+          if (shouldDeleteOverride) {
+            if (!seenDeleteOverrideIds.add(visibilityOverrideId)) {
+              return <String, dynamic>{};
+            }
+            return {'mode': 'delete', 'overrideId': visibilityOverrideId};
+          }
+
+          return {
+            'mode': 'create',
+            'data': {
+              'coachId': slot['coachId'],
+              'date': DateFormat('yyyy-MM-dd').format(_date),
+              'type': _type,
+              'startTime': slot['startTime'],
+              'endTime': slot['endTime'],
+            },
+          };
+        })
+        .where((item) => item.isNotEmpty)
+        .toList();
+  }
+
+  Widget _buildVisibilitySelector() {
+    final actionLabel = _type == 'VISIBLE' ? '공개' : '비공개';
+    final targetLabel = _type == 'VISIBLE' ? '현재 비공개 시간대' : '현재 공개 시간대';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                '$targetLabel 목록',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            if (_visibilityCandidates.isNotEmpty)
+              TextButton(
+                onPressed: () {
+                  setState(() {
+                    if (_selectedVisibilitySlotKeys.length ==
+                        _visibilityCandidates.length) {
+                      _selectedVisibilitySlotKeys.clear();
+                    } else {
+                      _selectedVisibilitySlotKeys
+                        ..clear()
+                        ..addAll(_visibilityCandidates.map(_slotKey));
+                    }
+                  });
+                },
+                child: Text(
+                  _selectedVisibilitySlotKeys.length ==
+                          _visibilityCandidates.length
+                      ? '전체 해제'
+                      : '전체 선택',
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (_isLoadingSlots)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 20),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else if (_slotLoadError != null)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.red.shade50,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              _slotLoadError!,
+              style: TextStyle(color: Colors.red.shade700),
+            ),
+          )
+        else if (_visibilityCandidates.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              '$actionLabel할 시간대가 없습니다',
+              style: TextStyle(color: Colors.grey.shade700),
+            ),
+          )
+        else
+          Container(
+            constraints: const BoxConstraints(maxHeight: 280),
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  for (
+                    var index = 0;
+                    index < _visibilityCandidates.length;
+                    index++
+                  ) ...[
+                    if (index > 0) const Divider(height: 1),
+                    Builder(
+                      builder: (context) {
+                        final slot = _visibilityCandidates[index];
+                        final key = _slotKey(slot);
+                        final selected = _selectedVisibilitySlotKeys.contains(
+                          key,
+                        );
+                        final coachName = slot['coachName'] as String? ?? '';
+                        return CheckboxListTile(
+                          value: selected,
+                          contentPadding: EdgeInsets.zero,
+                          controlAffinity: ListTileControlAffinity.leading,
+                          title: Text(
+                            '${slot['startTime']} - ${slot['endTime']}',
+                          ),
+                          subtitle: Text(
+                            coachName.isEmpty
+                                ? ((slot['isPublic'] == true)
+                                      ? '현재 공개'
+                                      : '현재 비공개')
+                                : '$coachName 코치 · ${slot['isPublic'] == true ? '현재 공개' : '현재 비공개'}',
+                          ),
+                          onChanged: (value) {
+                            setState(() {
+                              if (value == true) {
+                                _selectedVisibilitySlotKeys.add(key);
+                              } else {
+                                _selectedVisibilitySlotKeys.remove(key);
+                              }
+                            });
+                          },
+                        );
+                      },
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -391,6 +690,7 @@ class _OverrideDialogState extends State<_OverrideDialog> {
                 );
                 if (picked != null) {
                   setState(() => _date = picked);
+                  _loadVisibilityCandidates();
                 }
               },
             ),
@@ -407,10 +707,11 @@ class _OverrideDialogState extends State<_OverrideDialog> {
               onChanged: (value) {
                 if (value != null) {
                   setState(() => _type = value);
+                  _loadVisibilityCandidates();
                 }
               },
             ),
-            if (_type == 'OPEN' || _type == 'VISIBLE' || _type == 'HIDDEN') ...[
+            if (_type == 'OPEN') ...[
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -503,6 +804,7 @@ class _OverrideDialogState extends State<_OverrideDialog> {
                 ),
               ],
             ],
+            if (_isVisibilityType) _buildVisibilitySelector(),
           ],
         ),
       ),
@@ -515,20 +817,28 @@ class _OverrideDialogState extends State<_OverrideDialog> {
           onPressed: () {
             final startMinutes = _startTime.hour * 60 + _startTime.minute;
             final endMinutes = _endTime.hour * 60 + _endTime.minute;
-            if ((_type == 'OPEN' || _type == 'VISIBLE' || _type == 'HIDDEN') &&
-                startMinutes >= endMinutes) {
+            if (_type == 'OPEN' && startMinutes >= endMinutes) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('시작시간이 종료시간보다 빨라야 합니다')),
               );
               return;
             }
 
+            if (_isVisibilityType) {
+              if (_selectedVisibilitySlotKeys.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('변경할 시간대를 선택해주세요')),
+                );
+                return;
+              }
+              Navigator.pop(context, _buildVisibilityOverrideActions());
+              return;
+            }
+
             Navigator.pop(context, {
               'date': DateFormat('yyyy-MM-dd').format(_date),
               'type': _type,
-              if (_type == 'OPEN' ||
-                  _type == 'VISIBLE' ||
-                  _type == 'HIDDEN') ...{
+              if (_type == 'OPEN') ...{
                 'startTime': _fmt(_startTime),
                 'endTime': _fmt(_endTime),
                 if (_type == 'OPEN') 'slotDuration': _slotDuration,
@@ -538,7 +848,7 @@ class _OverrideDialogState extends State<_OverrideDialog> {
               },
             });
           },
-          child: const Text('추가'),
+          child: Text(_isVisibilityType ? '선택 적용' : '추가'),
         ),
       ],
     );
