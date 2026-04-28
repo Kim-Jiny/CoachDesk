@@ -8,10 +8,7 @@ class ScheduleActionResult {
   final bool success;
   final String? error;
 
-  const ScheduleActionResult({
-    required this.success,
-    this.error,
-  });
+  const ScheduleActionResult({required this.success, this.error});
 }
 
 class ScheduleActionNotifier extends Notifier<void> {
@@ -99,11 +96,10 @@ class ScheduleActionNotifier extends Notifier<void> {
   }) async {
     try {
       await _dio.post(
-        '/schedules/overrides',
+        '/schedules/close-slot',
         data: {
           'coachId': coachId,
           'date': DateFormat('yyyy-MM-dd').format(date),
-          'type': 'CLOSED',
           'startTime': startTime,
           'endTime': endTime,
         },
@@ -152,7 +148,35 @@ class ScheduleActionNotifier extends Notifier<void> {
       return const ScheduleActionResult(success: false);
     }
   }
+
+  Future<ScheduleActionResult> shiftDaySchedule({
+    required String coachId,
+    required DateTime date,
+    required String fromStartTime,
+    required int deltaMinutes,
+  }) async {
+    try {
+      await _dio.post(
+        '/schedules/shift-day',
+        data: {
+          'coachId': coachId,
+          'date': DateFormat('yyyy-MM-dd').format(date),
+          'fromStartTime': fromStartTime,
+          'deltaMinutes': deltaMinutes,
+        },
+      );
+      return const ScheduleActionResult(success: true);
+    } on DioException catch (e) {
+      return ScheduleActionResult(
+        success: false,
+        error: e.response?.data?['error'] as String?,
+      );
+    } catch (_) {
+      return const ScheduleActionResult(success: false);
+    }
+  }
 }
 
-final scheduleActionProvider =
-    NotifierProvider<ScheduleActionNotifier, void>(ScheduleActionNotifier.new);
+final scheduleActionProvider = NotifierProvider<ScheduleActionNotifier, void>(
+  ScheduleActionNotifier.new,
+);

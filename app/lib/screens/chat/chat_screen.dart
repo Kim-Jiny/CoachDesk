@@ -1,13 +1,16 @@
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/api_client.dart';
 import '../../core/socket_service.dart';
 import '../../models/chat.dart';
 import '../../providers/chat_provider.dart';
+import 'verification_photo.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   final String roomId;
@@ -25,6 +28,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _peerTyping = false;
   Timer? _typingTimer;
   int _lastMessageCount = 0;
+  bool _uploadingImage = false;
 
   @override
   void initState() {
@@ -98,6 +102,55 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (_isTyping) {
       _isTyping = false;
       ref.read(chatMessagesProvider(widget.roomId).notifier).sendTyping(false);
+    }
+  }
+
+  Future<void> _showAttachmentSheet() async {
+    if (_uploadingImage) return;
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera_rounded),
+              title: const Text('카메라로 인증샷 촬영'),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_rounded),
+              title: const Text('갤러리에서 사진 선택'),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (source == null || !mounted) return;
+
+    setState(() => _uploadingImage = true);
+    try {
+      final result = await VerificationPhotoService.capture(source: source);
+      if (result == null || !mounted) return;
+
+      final ok = await ref
+          .read(chatMessagesProvider(widget.roomId).notifier)
+          .sendImageMessage(bytes: result.bytes, fileName: result.fileName);
+      if (!mounted) return;
+      if (!ok) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('사진 전송에 실패했습니다')),
+        );
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('사진 처리에 실패했습니다')),
+      );
+    } finally {
+      if (mounted) setState(() => _uploadingImage = false);
     }
   }
 
@@ -213,6 +266,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ),
       child: Row(
         children: [
+          IconButton(
+            tooltip: '인증샷 보내기',
+            onPressed: _uploadingImage ? null : _showAttachmentSheet,
+            icon: _uploadingImage
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(
+                    Icons.add_circle_outline_rounded,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+          ),
           Expanded(
             child: TextField(
               controller: _controller,
@@ -290,10 +357,12 @@ class _MessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isImage = message.messageType == 'IMAGE';
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(
-        mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment:
+            isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (isMe) ...[
@@ -304,27 +373,30 @@ class _MessageBubble extends StatelessWidget {
             const SizedBox(width: 4),
           ],
           Flexible(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: isMe
-                    ? Theme.of(context).colorScheme.primary
-                    : Colors.grey.shade100,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(16),
-                  topRight: const Radius.circular(16),
-                  bottomLeft: Radius.circular(isMe ? 16 : 4),
-                  bottomRight: Radius.circular(isMe ? 4 : 16),
-                ),
-              ),
-              child: Text(
-                message.content,
-                style: TextStyle(
-                  color: isMe ? Colors.white : Colors.black87,
-                  fontSize: 15,
-                ),
-              ),
-            ),
+            child: isImage
+                ? _ImageBubble(url: message.content, isMe: isMe)
+                : Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: isMe
+                          ? Theme.of(context).colorScheme.primary
+                          : Colors.grey.shade100,
+                      borderRadius: BorderRadius.only(
+                        topLeft: const Radius.circular(16),
+                        topRight: const Radius.circular(16),
+                        bottomLeft: Radius.circular(isMe ? 16 : 4),
+                        bottomRight: Radius.circular(isMe ? 4 : 16),
+                      ),
+                    ),
+                    child: Text(
+                      message.content,
+                      style: TextStyle(
+                        color: isMe ? Colors.white : Colors.black87,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ),
           ),
           if (!isMe) ...[
             const SizedBox(width: 4),
@@ -334,6 +406,82 @@ class _MessageBubble extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _ImageBubble extends StatelessWidget {
+  final String url;
+  final bool isMe;
+
+  const _ImageBubble({required this.url, required this.isMe});
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.only(
+      topLeft: const Radius.circular(16),
+      topRight: const Radius.circular(16),
+      bottomLeft: Radius.circular(isMe ? 16 : 4),
+      bottomRight: Radius.circular(isMe ? 4 : 16),
+    );
+    return GestureDetector(
+      onTap: () => _openFullScreen(context),
+      child: ClipRRect(
+        borderRadius: radius,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 320, maxWidth: 240),
+          child: CachedNetworkImage(
+            imageUrl: url,
+            fit: BoxFit.cover,
+            placeholder: (_, _) => Container(
+              color: Colors.grey.shade200,
+              width: 200,
+              height: 200,
+              alignment: Alignment.center,
+              child: const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+            errorWidget: (_, _, _) => Container(
+              color: Colors.grey.shade200,
+              width: 200,
+              height: 200,
+              alignment: Alignment.center,
+              child: const Icon(Icons.broken_image_rounded),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openFullScreen(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            iconTheme: const IconThemeData(color: Colors.white),
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              child: CachedNetworkImage(
+                imageUrl: url,
+                fit: BoxFit.contain,
+                placeholder: (_, _) => const CircularProgressIndicator(),
+                errorWidget: (_, _, _) => const Icon(
+                  Icons.broken_image_rounded,
+                  color: Colors.white70,
+                  size: 48,
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -145,11 +145,40 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
   }
 
   Future<void> _adjustReservationTime(Reservation reservation) async {
-    final deltaMinutes = await _showTimeAdjustDialog(
+    final selection = await _showTimeAdjustDialog(
       startTime: reservation.startTime,
       endTime: reservation.endTime,
+      followingLabel: _buildFollowingScheduleLabel(reservation.coachName),
     );
-    if (deltaMinutes == null || !mounted) return;
+    if (selection == null || !mounted) return;
+    final deltaMinutes = selection.deltaMinutes;
+
+    if (selection.scope == TimeAdjustmentScope.following) {
+      final result = await ref
+          .read(scheduleActionProvider.notifier)
+          .shiftDaySchedule(
+            coachId: reservation.coachId,
+            date: _selectedDay,
+            fromStartTime: reservation.startTime,
+            deltaMinutes: deltaMinutes,
+          );
+      if (result.success) {
+        await _refreshAll();
+        if (!mounted) return;
+        final absMinutes = deltaMinutes.abs();
+        final direction = deltaMinutes > 0 ? '미뤘습니다' : '앞당겼습니다';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('이후 일정을 $absMinutes분 $direction')),
+        );
+        return;
+      }
+      if (!mounted) return;
+      final message = result.error ?? '이후 일정 전체 조정에 실패했습니다';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+      return;
+    }
 
     final warnings = buildTimeRangeAdjustmentWarnings(
       reservations: ref.read(reservationProvider).reservations,
@@ -168,11 +197,9 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
       force = true;
     }
 
-    final result = await ref.read(reservationProvider.notifier).adjustTime(
-      reservation.id,
-      delayMinutes: deltaMinutes,
-      force: force,
-    );
+    final result = await ref
+        .read(reservationProvider.notifier)
+        .adjustTime(reservation.id, delayMinutes: deltaMinutes, force: force);
     if (result.success) {
       await _refreshScheduleArtifacts();
       if (!mounted) return;
@@ -191,11 +218,42 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
   }
 
   Future<void> _adjustEmptySlotTime(Map<String, dynamic> slot) async {
-    final deltaMinutes = await _showTimeAdjustDialog(
+    final selection = await _showTimeAdjustDialog(
       startTime: slot['startTime'] as String,
       endTime: slot['endTime'] as String,
+      followingLabel: _buildFollowingScheduleLabel(
+        slot['coachName'] as String?,
+      ),
     );
-    if (deltaMinutes == null || !mounted) return;
+    if (selection == null || !mounted) return;
+    final deltaMinutes = selection.deltaMinutes;
+
+    if (selection.scope == TimeAdjustmentScope.following) {
+      final result = await ref
+          .read(scheduleActionProvider.notifier)
+          .shiftDaySchedule(
+            coachId: slot['coachId'] as String,
+            date: _selectedDay,
+            fromStartTime: slot['startTime'] as String,
+            deltaMinutes: deltaMinutes,
+          );
+      if (result.success) {
+        await _refreshAll();
+        if (!mounted) return;
+        final absMinutes = deltaMinutes.abs();
+        final direction = deltaMinutes > 0 ? '미뤘습니다' : '앞당겼습니다';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('이후 일정을 $absMinutes분 $direction')),
+        );
+        return;
+      }
+      if (!mounted) return;
+      final message = result.error ?? '이후 일정 전체 조정에 실패했습니다';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+      return;
+    }
 
     final warnings = buildTimeRangeAdjustmentWarnings(
       reservations: ref.read(reservationProvider).reservations,
@@ -221,17 +279,19 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
       slot['endTime'] as String,
     );
 
-    final result = await ref.read(scheduleActionProvider.notifier).moveSlot(
-      coachId: slot['coachId'] as String,
-      date: _selectedDay,
-      currentStartTime: slot['startTime'] as String,
-      currentEndTime: slot['endTime'] as String,
-      newStartTime: newStart,
-      newEndTime: newEnd,
-      slotDuration: originalDuration,
-      maxCapacity: slot['maxCapacity'] as int? ?? 1,
-      isPublic: slot['isPublic'] == true,
-    );
+    final result = await ref
+        .read(scheduleActionProvider.notifier)
+        .moveSlot(
+          coachId: slot['coachId'] as String,
+          date: _selectedDay,
+          currentStartTime: slot['startTime'] as String,
+          currentEndTime: slot['endTime'] as String,
+          newStartTime: newStart,
+          newEndTime: newEnd,
+          slotDuration: originalDuration,
+          maxCapacity: slot['maxCapacity'] as int? ?? 1,
+          isPublic: slot['isPublic'] == true,
+        );
     if (result.success) {
       await _refreshScheduleArtifacts();
       if (!mounted) return;
@@ -270,9 +330,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
           visibilityOverrideId != null && visibilityOverrideId.isNotEmpty
           ? baseIsPublic
           : !baseIsPublic;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             changedToPublic ? '이 시간대를 회원에게 공개했습니다' : '이 시간대를 회원에게 비공개했습니다',
@@ -292,14 +350,24 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
     return showTimeAdjustmentWarningsDialog(context, warnings);
   }
 
-  Future<int?> _showTimeAdjustDialog({
+  String _buildFollowingScheduleLabel(String? coachName) {
+    final resolvedCoachName = coachName?.trim();
+    if (resolvedCoachName == null || resolvedCoachName.isEmpty) {
+      return '내 이후 일정 전체 조정';
+    }
+    return '$resolvedCoachName 코치의 이후 일정 전체 조정';
+  }
+
+  Future<TimeAdjustmentSelection?> _showTimeAdjustDialog({
     required String startTime,
     required String endTime,
+    required String followingLabel,
   }) {
     return showTimeAdjustDialog(
       context,
       startTime: startTime,
       endTime: endTime,
+      followingLabel: followingLabel,
     );
   }
 
@@ -348,7 +416,9 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
   }
 
   Future<void> _loadSlots() {
-    return ref.read(scheduleSlotProvider.notifier).fetchSlots(date: _selectedDay);
+    return ref
+        .read(scheduleSlotProvider.notifier)
+        .fetchSlots(date: _selectedDay);
   }
 
   Future<void> _editReservationMemo(Reservation reservation) async {
@@ -609,12 +679,14 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
 
     if (confirmed != true) return;
 
-    final result = await ref.read(scheduleActionProvider.notifier).closeSlot(
-      coachId: slot['coachId'] as String,
-      date: _selectedDay,
-      startTime: slot['startTime'] as String,
-      endTime: slot['endTime'] as String,
-    );
+    final result = await ref
+        .read(scheduleActionProvider.notifier)
+        .closeSlot(
+          coachId: slot['coachId'] as String,
+          date: _selectedDay,
+          startTime: slot['startTime'] as String,
+          endTime: slot['endTime'] as String,
+        );
     if (result.success) {
       await _refreshScheduleArtifacts();
       if (!mounted) return;
@@ -1043,7 +1115,11 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                         final cancelledCountMap = <String, int>{};
                         const inactiveStatuses = {'CANCELLED', 'NO_SHOW'};
                         for (final r in dayReservations) {
-                          final key = '${r.coachId}|${r.startTime}';
+                          // 지연된 예약은 원래 슬롯(originalStartTime)에 맞춰 그룹핑해
+                          // 8시 예약을 10분 미뤄도 "8시 타임" 카드로 표시되게 한다.
+                          final groupStartTime =
+                              r.originalStartTime ?? r.startTime;
+                          final key = '${r.coachId}|$groupStartTime';
                           if (inactiveStatuses.contains(r.status)) {
                             cancelledCountMap[key] =
                                 (cancelledCountMap[key] ?? 0) + 1;
@@ -1065,7 +1141,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                             matchedKeys.add(key);
                             timelineItems.add(
                               TimelineItem(
-                                startTime: reservations.first.startTime,
+                                startTime: slot['startTime'] as String,
                                 reservations: reservations,
                                 slot: slot,
                                 cancelledCount: cancelled,
@@ -1102,15 +1178,14 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                           (a, b) => a.startTime.compareTo(b.startTime),
                         );
 
-                          final filteredItems = timelineItems.where((item) {
+                        final filteredItems = timelineItems.where((item) {
                           final isPast = isPastTimeForDay(
                             selectedDay: _selectedDay,
                             startTime: item.startTime,
                           );
                           return switch (_filter) {
                             TimelineFilter.all => true,
-                            TimelineFilter.reservations =>
-                              item.hasReservations,
+                            TimelineFilter.reservations => item.hasReservations,
                             TimelineFilter.open =>
                               item.slot != null &&
                                   item.slot!['available'] == true,
@@ -1151,6 +1226,8 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                         }
 
                         if (filteredItems.isEmpty) {
+                          final showScheduleSettingAction =
+                              _filter == TimelineFilter.all;
                           return ListView(
                             physics: const AlwaysScrollableScrollPhysics(),
                             padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
@@ -1161,6 +1238,15 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                                 message: emptyStateMessage,
                                 actionLabel: '스케줄 관리',
                                 onAction: _showOverrideSheet,
+                                secondaryActionLabel: showScheduleSettingAction
+                                    ? '수업시간 설정'
+                                    : null,
+                                secondaryActionIcon: showScheduleSettingAction
+                                    ? Icons.schedule_rounded
+                                    : null,
+                                onSecondaryAction: showScheduleSettingAction
+                                    ? () => context.push('/settings/schedules')
+                                    : null,
                               ),
                             ],
                           );
@@ -1224,6 +1310,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'schedule_add_action_fab',
         onPressed: _showAddScheduleActionSheet,
         child: const Icon(Icons.add),
       ),
@@ -1338,15 +1425,17 @@ class _EmptySlotCreateSheetState extends ConsumerState<_EmptySlotCreateSheet> {
     });
 
     try {
-      final result = await ref.read(scheduleActionProvider.notifier).createOpenSlot(
-        date: widget.selectedDay,
-        startTime: _fmt(_startTime),
-        endTime: _fmt(_endTime),
-        slotDuration: duration,
-        breakMinutes: breakMinutes,
-        maxCapacity: _maxCapacity,
-        isPublic: _isPublic,
-      );
+      final result = await ref
+          .read(scheduleActionProvider.notifier)
+          .createOpenSlot(
+            date: widget.selectedDay,
+            startTime: _fmt(_startTime),
+            endTime: _fmt(_endTime),
+            slotDuration: duration,
+            breakMinutes: breakMinutes,
+            maxCapacity: _maxCapacity,
+            isPublic: _isPublic,
+          );
       if (!result.success) {
         if (!mounted) return;
         setState(() {
@@ -1842,8 +1931,12 @@ class _OverrideBottomSheetState extends ConsumerState<_OverrideBottomSheet> {
               ),
             ),
             const SizedBox(height: 8),
-            ...widget.overrides.map(
-              (o) => Container(
+            ...widget.overrides.map((o) {
+              final isPartialClosed =
+                  o.type == 'CLOSED' &&
+                  o.startTime != null &&
+                  o.endTime != null;
+              return Container(
                 margin: const EdgeInsets.only(bottom: 8),
                 padding: const EdgeInsets.symmetric(
                   horizontal: 14,
@@ -1877,7 +1970,9 @@ class _OverrideBottomSheetState extends ConsumerState<_OverrideBottomSheet> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            o.type == 'CLOSED' ? '휴무' : '추가 오픈',
+                            o.type == 'CLOSED'
+                                ? (isPartialClosed ? '타임 삭제' : '휴무')
+                                : '추가 오픈',
                             style: TextStyle(
                               fontWeight: FontWeight.w600,
                               fontSize: 14,
@@ -1892,6 +1987,14 @@ class _OverrideBottomSheetState extends ConsumerState<_OverrideBottomSheet> {
                               ' (${o.slotDuration ?? 60}분'
                               '${(o.breakMinutes ?? 0) > 0 ? ', 쉬는시간 ${o.breakMinutes}분' : ''}'
                               ', 정원 ${o.maxCapacity ?? 1}명)',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            )
+                          else if (isPartialClosed)
+                            Text(
+                              '${o.startTime} - ${o.endTime} / 해당 시간만 삭제',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: Colors.grey.shade600,
@@ -1912,8 +2015,8 @@ class _OverrideBottomSheetState extends ConsumerState<_OverrideBottomSheet> {
                     ),
                   ],
                 ),
-              ),
-            ),
+              );
+            }),
             const SizedBox(height: 8),
           ],
 

@@ -178,6 +178,7 @@ class HomeScreen extends ConsumerWidget {
         ),
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'home_create_reservation_fab',
         onPressed: () => context.push('/reservations/new'),
         child: const Icon(Icons.add),
       ),
@@ -232,6 +233,7 @@ class HomeScreen extends ConsumerWidget {
                 value: '${data['activeMembers'] ?? 0}',
                 icon: Icons.people,
                 color: AppTheme.successColor,
+                onTap: () => context.push('/packages/members'),
               ),
             ),
             const SizedBox(width: 12),

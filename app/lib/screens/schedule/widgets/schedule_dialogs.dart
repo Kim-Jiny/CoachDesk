@@ -6,6 +6,18 @@ import '../../../models/reservation.dart';
 import '../../../widgets/common.dart';
 import '../schedule_helpers.dart';
 
+enum TimeAdjustmentScope { single, following }
+
+class TimeAdjustmentSelection {
+  final int deltaMinutes;
+  final TimeAdjustmentScope scope;
+
+  const TimeAdjustmentSelection({
+    required this.deltaMinutes,
+    required this.scope,
+  });
+}
+
 Future<bool?> showTimeAdjustmentWarningsDialog(
   BuildContext context,
   List<String> warnings,
@@ -30,16 +42,18 @@ Future<bool?> showTimeAdjustmentWarningsDialog(
   );
 }
 
-Future<int?> showTimeAdjustDialog(
+Future<TimeAdjustmentSelection?> showTimeAdjustDialog(
   BuildContext context, {
   required String startTime,
   required String endTime,
+  required String followingLabel,
 }) {
   final controller = TextEditingController(text: '10');
   var isDelay = true;
+  var scope = TimeAdjustmentScope.single;
   String? errorText;
 
-  return showDialog<int>(
+  return showDialog<TimeAdjustmentSelection>(
     context: context,
     builder: (dialogContext) {
       return StatefulBuilder(
@@ -87,6 +101,39 @@ Future<int?> showTimeAdjustDialog(
                     errorText: errorText,
                   ),
                 ),
+                const SizedBox(height: 16),
+                const Text(
+                  '적용 범위',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 10),
+                SegmentedButton<TimeAdjustmentScope>(
+                  segments: [
+                    const ButtonSegment(
+                      value: TimeAdjustmentScope.single,
+                      label: Text('이 일정만'),
+                    ),
+                    ButtonSegment(
+                      value: TimeAdjustmentScope.following,
+                      label: Text(followingLabel),
+                    ),
+                  ],
+                  selected: {scope},
+                  onSelectionChanged: (selection) {
+                    setState(() => scope = selection.first);
+                  },
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  scope == TimeAdjustmentScope.single
+                      ? '선택한 수업 또는 빈 타임만 이동합니다'
+                      : '이 시간 이후 오늘 일정이 함께 이동합니다',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade600,
+                    height: 1.4,
+                  ),
+                ),
               ],
             ),
             actions: [
@@ -101,7 +148,13 @@ Future<int?> showTimeAdjustDialog(
                     setState(() => errorText = '1에서 120 사이의 값을 입력해주세요');
                     return;
                   }
-                  Navigator.pop(dialogContext, isDelay ? value : -value);
+                  Navigator.pop(
+                    dialogContext,
+                    TimeAdjustmentSelection(
+                      deltaMinutes: isDelay ? value : -value,
+                      scope: scope,
+                    ),
+                  );
                 },
                 child: const Text('적용'),
               ),
@@ -184,9 +237,14 @@ Future<String?> showReservationActionSheet(
                 _ReservationInfoRow(label: '코치', value: reservation.coachName!),
               if (memberQuickMemo != null && memberQuickMemo.isNotEmpty)
                 _ReservationInfoRow(label: '회원 메모', value: memberQuickMemo),
-              if (reservationQuickMemo != null && reservationQuickMemo.isNotEmpty)
-                _ReservationInfoRow(label: '예약 메모', value: reservationQuickMemo),
-              if (reservation.memo != null && reservation.memo!.trim().isNotEmpty)
+              if (reservationQuickMemo != null &&
+                  reservationQuickMemo.isNotEmpty)
+                _ReservationInfoRow(
+                  label: '예약 메모',
+                  value: reservationQuickMemo,
+                ),
+              if (reservation.memo != null &&
+                  reservation.memo!.trim().isNotEmpty)
                 _ReservationInfoRow(
                   label: '상세 메모',
                   value: reservation.memo!.trim(),
@@ -277,11 +335,13 @@ Future<String?> showReservationActionSheet(
                       color: canComplete ? null : Colors.grey.shade500,
                     ),
                   ),
-                  subtitle:
-                      canComplete ? null : const Text('아직 종료 시간이 지나지 않았습니다'),
+                  subtitle: canComplete
+                      ? null
+                      : const Text('아직 종료 시간이 지나지 않았습니다'),
                   enabled: canComplete,
-                  onTap:
-                      canComplete ? () => Navigator.pop(context, 'complete') : null,
+                  onTap: canComplete
+                      ? () => Navigator.pop(context, 'complete')
+                      : null,
                 ),
               ],
             ],
@@ -313,7 +373,10 @@ Future<Reservation?> showReservationListSheet(
             children: [
               Text(
                 '${first.startTime} - ${first.endTime}',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const SizedBox(height: 6),
               Text(
@@ -356,7 +419,8 @@ Future<Reservation?> showReservationListSheet(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          if (memberQuickMemo != null && memberQuickMemo.isNotEmpty)
+                          if (memberQuickMemo != null &&
+                              memberQuickMemo.isNotEmpty)
                             Padding(
                               padding: const EdgeInsets.only(top: 2),
                               child: Text(

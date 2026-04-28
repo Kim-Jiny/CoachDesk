@@ -426,6 +426,19 @@ class MemberAuthNotifier extends Notifier<MemberAuthState> {
     }
   }
 
+  Future<MemberPackageDetail?> fetchMyPackageDetail(String memberPackageId) async {
+    try {
+      final response = await _dio.get(
+        '/auth/member/packages/$memberPackageId',
+      );
+      return MemberPackageDetail.fromJson(
+        response.data as Map<String, dynamic>,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<String?> requestPackagePause({
     required String memberPackageId,
     required String startDate,

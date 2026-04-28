@@ -173,3 +173,146 @@ class MemberPackage {
     );
   }
 }
+
+class MemberPackageAdjustment {
+  final String id;
+  final String type;
+  final int sessionDelta;
+  final DateTime? expiryDateBefore;
+  final DateTime? expiryDateAfter;
+  final String? reason;
+  final String adminId;
+  final String adminName;
+  final DateTime createdAt;
+
+  const MemberPackageAdjustment({
+    required this.id,
+    required this.type,
+    required this.sessionDelta,
+    this.expiryDateBefore,
+    this.expiryDateAfter,
+    this.reason,
+    required this.adminId,
+    required this.adminName,
+    required this.createdAt,
+  });
+
+  factory MemberPackageAdjustment.fromJson(Map<String, dynamic> json) {
+    return MemberPackageAdjustment(
+      id: json['id'] as String,
+      type: json['type'] as String,
+      sessionDelta: json['sessionDelta'] as int? ?? 0,
+      expiryDateBefore: json['expiryDateBefore'] != null
+          ? DateTime.parse(json['expiryDateBefore'] as String)
+          : null,
+      expiryDateAfter: json['expiryDateAfter'] != null
+          ? DateTime.parse(json['expiryDateAfter'] as String)
+          : null,
+      reason: json['reason'] as String?,
+      adminId: json['adminId'] as String,
+      adminName: json['adminName'] as String? ?? '',
+      createdAt: DateTime.parse(json['createdAt'] as String),
+    );
+  }
+
+  String get typeLabel => switch (type) {
+        'EXTEND_EXPIRY' => '만료일 연장',
+        'SHORTEN_EXPIRY' => '만료일 단축',
+        'ADD_SESSIONS' => '회차 추가',
+        'DEDUCT_SESSIONS' => '회차 차감',
+        _ => type,
+      };
+
+  bool get isSessionAdjustment =>
+      type == 'ADD_SESSIONS' || type == 'DEDUCT_SESSIONS';
+}
+
+class MemberPackageSessionEntry {
+  final String id;
+  final DateTime date;
+  final String? startTime;
+  final String? endTime;
+  final String coachId;
+  final String coachName;
+  final String attendance;
+
+  const MemberPackageSessionEntry({
+    required this.id,
+    required this.date,
+    this.startTime,
+    this.endTime,
+    required this.coachId,
+    required this.coachName,
+    required this.attendance,
+  });
+
+  factory MemberPackageSessionEntry.fromJson(Map<String, dynamic> json) {
+    return MemberPackageSessionEntry(
+      id: json['id'] as String,
+      date: DateTime.parse(json['date'] as String),
+      startTime: json['startTime'] as String?,
+      endTime: json['endTime'] as String?,
+      coachId: json['coachId'] as String,
+      coachName: json['coachName'] as String? ?? '',
+      attendance: json['attendance'] as String? ?? 'PRESENT',
+    );
+  }
+}
+
+class MemberPackageDetail {
+  final MemberPackage memberPackage;
+  final List<MemberPackageSessionEntry> sessions;
+  final List<MemberPackageAdjustment> adjustments;
+
+  const MemberPackageDetail({
+    required this.memberPackage,
+    required this.sessions,
+    required this.adjustments,
+  });
+
+  factory MemberPackageDetail.fromJson(Map<String, dynamic> json) {
+    final pkg = json['memberPackage'] as Map<String, dynamic>;
+    return MemberPackageDetail(
+      memberPackage: MemberPackage(
+        id: pkg['id'] as String,
+        memberId: '',
+        packageId: pkg['packageId'] as String,
+        totalSessions: pkg['totalSessions'] as int,
+        usedSessions: pkg['usedSessions'] as int,
+        remainingSessions: pkg['remainingSessions'] as int,
+        purchaseDate: DateTime.parse(pkg['purchaseDate'] as String),
+        expiryDate: pkg['expiryDate'] != null
+            ? DateTime.parse(pkg['expiryDate'] as String)
+            : null,
+        paidAmount: 0,
+        paymentMethod: 'CASH',
+        status: pkg['status'] as String? ?? 'ACTIVE',
+        pauseStartDate: pkg['pauseStartDate'] != null
+            ? DateTime.parse(pkg['pauseStartDate'] as String)
+            : null,
+        pauseEndDate: pkg['pauseEndDate'] != null
+            ? DateTime.parse(pkg['pauseEndDate'] as String)
+            : null,
+        pauseExtensionDays: pkg['pauseExtensionDays'] as int? ?? 0,
+        package: Package(
+          id: pkg['packageId'] as String,
+          organizationId: '',
+          name: pkg['packageName'] as String? ?? '패키지',
+          totalSessions: pkg['totalSessions'] as int,
+          price: 0,
+          isActive: true,
+          isPublic: false,
+          createdAt: DateTime.now(),
+        ),
+      ),
+      sessions: ((json['sessions'] as List?) ?? const [])
+          .map((e) =>
+              MemberPackageSessionEntry.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      adjustments: ((json['adjustments'] as List?) ?? const [])
+          .map((e) =>
+              MemberPackageAdjustment.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+}

@@ -1,7 +1,9 @@
+import { randomUUID } from 'crypto';
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma';
 import { authMiddleware } from '../middleware/auth';
+import { uploadFile } from '../utils/storage';
 
 const router = Router();
 router.use(authMiddleware);
@@ -28,7 +30,7 @@ router.get('/rooms', async (req: Request, res: Response) => {
         messages: {
           orderBy: { createdAt: 'desc' },
           take: 1,
-          select: { content: true, createdAt: true, senderType: true },
+          select: { content: true, createdAt: true, senderType: true, messageType: true },
         },
       },
       orderBy: { lastMessageAt: 'desc' },
@@ -193,6 +195,54 @@ router.get('/rooms/:roomId/messages', async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error('Get messages error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── Upload Chat Image (인증샷 등) ───────────────────────
+const uploadChatImageSchema = z.object({
+  fileName: z.string().min(1).max(255),
+  contentType: z.enum(['image/jpeg', 'image/png', 'image/webp']),
+  base64Data: z.string().min(1),
+});
+
+router.post('/rooms/:roomId/upload-image', async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.userId;
+    const roomId = req.params.roomId as string;
+
+    const room = await prisma.chatRoom.findUnique({
+      where: { id: roomId },
+      select: { userId: true, memberAccountId: true },
+    });
+    if (!room || (room.userId !== userId && room.memberAccountId !== userId)) {
+      res.status(403).json({ error: 'Access denied' });
+      return;
+    }
+
+    const body = uploadChatImageSchema.parse(req.body);
+    const buffer = Buffer.from(body.base64Data, 'base64');
+    if (buffer.length === 0) {
+      res.status(400).json({ error: 'Image data required' });
+      return;
+    }
+    if (buffer.length > 6 * 1024 * 1024) {
+      res.status(400).json({ error: '이미지는 6MB 이하만 업로드할 수 있습니다' });
+      return;
+    }
+
+    const safeName = body.fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const ext = safeName.includes('.') ? safeName.split('.').pop() : 'jpg';
+    const objectName = `chat/${roomId}/${randomUUID()}.${ext}`;
+    const imageUrl = await uploadFile(objectName, buffer, body.contentType);
+
+    res.json({ imageUrl });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: err.errors });
+      return;
+    }
+    console.error('Upload chat image error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

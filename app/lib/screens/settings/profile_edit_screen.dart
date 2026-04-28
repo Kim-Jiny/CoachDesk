@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../core/theme.dart';
 import '../../providers/auth_provider.dart';
+import '../../widgets/common.dart';
 
 class ProfileEditScreen extends ConsumerStatefulWidget {
   const ProfileEditScreen({super.key});
@@ -192,7 +193,7 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
         ? null
         : _existingReservationNoticeImageUrl;
 
-    return Scaffold(
+    return DismissKeyboardOnTap(child: Scaffold(
       appBar: AppBar(
         title: const Text('프로필 수정'),
         actions: [
@@ -493,6 +494,6 @@ class _ProfileEditScreenState extends ConsumerState<ProfileEditScreen> {
           ],
         ),
       ),
-    );
+    ));
   }
 }

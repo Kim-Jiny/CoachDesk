@@ -2,7 +2,7 @@ import { prisma } from '../../utils/prisma';
 import { isUserInOrganization } from '../../utils/org-access';
 import { getKstDayOfWeek, parseDateOnly } from '../../utils/kst-date';
 import { findFirstScheduleCompat, findScheduleOverridesCompat } from '../../utils/schedule-access';
-import { encodeMemoFields } from '../../utils/memo-fields';
+import { decodeMemoFields, encodeMemoFields } from '../../utils/memo-fields';
 import { isTimeRangeClosed } from '../../utils/slot-blocking';
 import { getAvailableSlots } from '../../utils/slot-service';
 import { isOverlappingTimeRange } from '../shared/time-range';
@@ -157,17 +157,20 @@ export async function createAdminReservation(
       select: {
         startTime: true,
         endTime: true,
+        memo: true,
       },
     });
 
-    const booked = overlappingReservations.filter((reservation) =>
-      isOverlappingTimeRange(
+    // 지연된 예약은 원래 슬롯(originalStartTime/EndTime)으로만 충돌 판정한다.
+    const booked = overlappingReservations.filter((reservation) => {
+      const memoFields = decodeMemoFields(reservation.memo);
+      return isOverlappingTimeRange(
         input.startTime,
         input.endTime,
-        reservation.startTime,
-        reservation.endTime,
-      ),
-    ).length;
+        memoFields.originalStartTime ?? reservation.startTime,
+        memoFields.originalEndTime ?? reservation.endTime,
+      );
+    }).length;
 
     if (booked >= maxCapacity) {
       throw new CreateAdminReservationError('FULL');

@@ -41,6 +41,7 @@ import { buildReservationStatusMessage } from '../features/reservation/notificat
 import {
   getMemberMyClasses,
   getMemberPackages as getMemberAccountPackages,
+  getMemberPackageDetail,
   getMemberProfile,
   getMyReservations,
   getReservationNotice,
@@ -720,6 +721,24 @@ router.get('/member/packages', authMiddleware, async (req: Request, res: Respons
     res.json(await getMemberAccountPackages(req.user!.userId));
   } catch (err) {
     console.error('Member packages error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/member/packages/:id', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    res.json(
+      await getMemberPackageDetail({
+        memberAccountId: req.user!.userId,
+        memberPackageId: req.params.id as string,
+      }),
+    );
+  } catch (err) {
+    if (err instanceof MemberAccountQueryError && err.code === 'NOT_MEMBER_OF_STUDIO') {
+      res.status(404).json({ error: '패키지를 찾을 수 없습니다' });
+      return;
+    }
+    console.error('Member package detail error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

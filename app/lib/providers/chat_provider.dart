@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
@@ -90,6 +93,7 @@ class ChatRoomListNotifier extends Notifier<ChatRoomListState> {
         lastMessage: ChatMessagePreview(
           content: messageData['content'] as String? ?? '',
           senderType: messageData['senderType'] as String? ?? '',
+          messageType: messageData['messageType'] as String? ?? 'TEXT',
           createdAt:
               DateTime.tryParse(messageData['createdAt'] as String? ?? '') ??
               DateTime.now(),
@@ -300,6 +304,34 @@ class ChatMessagesNotifier extends StateNotifier<ChatMessagesState> {
       'chatRoomId': roomId,
       'content': content,
     });
+  }
+
+  /// 이미지를 업로드한 뒤 IMAGE 메시지로 전송한다. 성공시 true.
+  Future<bool> sendImageMessage({
+    required Uint8List bytes,
+    required String fileName,
+    String contentType = 'image/jpeg',
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/chat/rooms/$roomId/upload-image',
+        data: {
+          'fileName': fileName,
+          'contentType': contentType,
+          'base64Data': base64Encode(bytes),
+        },
+      );
+      final url = (response.data as Map<String, dynamic>)['imageUrl'] as String?;
+      if (url == null) return false;
+      SocketService.instance.emit('chat:send', {
+        'chatRoomId': roomId,
+        'content': url,
+        'messageType': 'IMAGE',
+      });
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   void markRead() {

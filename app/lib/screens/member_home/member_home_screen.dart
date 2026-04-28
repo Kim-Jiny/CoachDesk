@@ -675,159 +675,170 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
                             ? '${DateFormat('M/d').format(memberPackage.pauseStartDate!)} - ${DateFormat('M/d').format(memberPackage.pauseEndDate!)}'
                             : null;
 
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 10),
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: AppTheme.softShadow,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      memberPackage.package?.name ?? '패키지',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 15,
+                        return GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () async {
+                            await context.push(
+                              '/member/packages/${memberPackage.id}',
+                            );
+                            _loadPackages();
+                          },
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: AppTheme.softShadow,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        memberPackage.package?.name ?? '패키지',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 15,
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 4,
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 4,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: memberPackage.isCurrentlyPaused
+                                            ? Colors.orange.withValues(
+                                                alpha: 0.12,
+                                              )
+                                            : AppTheme.primaryColor.withValues(
+                                                alpha: 0.1,
+                                              ),
+                                        borderRadius: BorderRadius.circular(
+                                          999,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        memberPackage.isCurrentlyPaused
+                                            ? '정지 중'
+                                            : '이용 중',
+                                        style: TextStyle(
+                                          color: memberPackage.isCurrentlyPaused
+                                              ? Colors.orange.shade700
+                                              : AppTheme.primaryColor,
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 12,
+                                        ),
+                                      ),
                                     ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  memberPackage.organizationName ?? '',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey.shade500,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  '잔여 ${memberPackage.remainingSessions}/${memberPackage.totalSessions}회',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.grey.shade700,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  '현재 만료일: $expiryLabel',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Colors.grey.shade700,
+                                  ),
+                                ),
+                                if (memberPackage.pauseExtensionDays > 0) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '정지 승인으로 총 ${memberPackage.pauseExtensionDays}일 연장됨',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.blueGrey.shade600,
+                                    ),
+                                  ),
+                                ],
+                                if (memberPackage.hasPendingPauseRequest &&
+                                    pendingRange != null) ...[
+                                  const SizedBox(height: 10),
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(12),
                                     decoration: BoxDecoration(
-                                      color: memberPackage.isCurrentlyPaused
-                                          ? Colors.orange.withValues(
-                                              alpha: 0.12,
-                                            )
-                                          : AppTheme.primaryColor.withValues(
-                                              alpha: 0.1,
-                                            ),
-                                      borderRadius: BorderRadius.circular(999),
+                                      color: Colors.orange.withValues(
+                                        alpha: 0.08,
+                                      ),
+                                      borderRadius: BorderRadius.circular(12),
                                     ),
                                     child: Text(
-                                      memberPackage.isCurrentlyPaused
-                                          ? '정지 중'
-                                          : '이용 중',
+                                      '정지 신청 검토 중: $pendingRange',
                                       style: TextStyle(
-                                        color: memberPackage.isCurrentlyPaused
-                                            ? Colors.orange.shade700
-                                            : AppTheme.primaryColor,
+                                        color: Colors.orange.shade800,
                                         fontWeight: FontWeight.w600,
                                         fontSize: 12,
                                       ),
                                     ),
                                   ),
                                 ],
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                memberPackage.organizationName ?? '',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey.shade500,
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              Text(
-                                '잔여 ${memberPackage.remainingSessions}/${memberPackage.totalSessions}회',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: Colors.grey.shade700,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '현재 만료일: $expiryLabel',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: Colors.grey.shade700,
-                                ),
-                              ),
-                              if (memberPackage.pauseExtensionDays > 0) ...[
-                                const SizedBox(height: 4),
-                                Text(
-                                  '정지 승인으로 총 ${memberPackage.pauseExtensionDays}일 연장됨',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.blueGrey.shade600,
+                                if (memberPackage.isCurrentlyPaused &&
+                                    activeRange != null) ...[
+                                  const SizedBox(height: 10),
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: Colors.orange.withValues(
+                                        alpha: 0.08,
+                                      ),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Text(
+                                      '현재 정지 기간: $activeRange',
+                                      style: TextStyle(
+                                        color: Colors.orange.shade800,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 12,
+                                      ),
+                                    ),
                                   ),
-                                ),
-                              ],
-                              if (memberPackage.hasPendingPauseRequest &&
-                                  pendingRange != null) ...[
-                                const SizedBox(height: 10),
-                                Container(
+                                ],
+                                const SizedBox(height: 12),
+                                SizedBox(
                                   width: double.infinity,
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: Colors.orange.withValues(
-                                      alpha: 0.08,
-                                    ),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Text(
-                                    '정지 신청 검토 중: $pendingRange',
-                                    style: TextStyle(
-                                      color: Colors.orange.shade800,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                              if (memberPackage.isCurrentlyPaused &&
-                                  activeRange != null) ...[
-                                const SizedBox(height: 10),
-                                Container(
-                                  width: double.infinity,
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: Colors.orange.withValues(
-                                      alpha: 0.08,
-                                    ),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Text(
-                                    '현재 정지 기간: $activeRange',
-                                    style: TextStyle(
-                                      color: Colors.orange.shade800,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 12,
+                                  child: OutlinedButton(
+                                    onPressed:
+                                        memberPackage.status != 'ACTIVE' ||
+                                            memberPackage
+                                                .hasPendingPauseRequest ||
+                                            memberPackage.isCurrentlyPaused
+                                        ? null
+                                        : () => _openPauseRequestSheet(
+                                            memberPackage,
+                                          ),
+                                    child: Text(
+                                      memberPackage.hasPendingPauseRequest
+                                          ? '정지 신청 검토중'
+                                          : memberPackage.isCurrentlyPaused
+                                          ? '현재 정지 중'
+                                          : '패키지 정지 신청',
                                     ),
                                   ),
                                 ),
                               ],
-                              const SizedBox(height: 12),
-                              SizedBox(
-                                width: double.infinity,
-                                child: OutlinedButton(
-                                  onPressed:
-                                      memberPackage.status != 'ACTIVE' ||
-                                          memberPackage
-                                              .hasPendingPauseRequest ||
-                                          memberPackage.isCurrentlyPaused
-                                      ? null
-                                      : () => _openPauseRequestSheet(
-                                          memberPackage,
-                                        ),
-                                  child: Text(
-                                    memberPackage.hasPendingPauseRequest
-                                        ? '정지 신청 검토중'
-                                        : memberPackage.isCurrentlyPaused
-                                        ? '현재 정지 중'
-                                        : '패키지 정지 신청',
-                                  ),
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
                         );
                       }),
@@ -882,6 +893,7 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
       ),
       floatingActionButton: classes.isNotEmpty
           ? FloatingActionButton.extended(
+              heroTag: 'member_home_join_class_fab',
               onPressed: _showJoinDialog,
               icon: const Icon(Icons.add),
               label: const Text('수업 참여'),

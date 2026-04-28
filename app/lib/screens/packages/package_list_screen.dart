@@ -275,6 +275,7 @@ class _PackageListScreenState extends ConsumerState<PackageListScreen> {
               ),
             ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'package_list_add_fab',
         onPressed: _openCreateForm,
         child: const Icon(Icons.add),
       ),

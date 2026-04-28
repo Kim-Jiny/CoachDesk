@@ -314,3 +314,77 @@ export async function getMemberPackages(memberAccountId: string) {
 
   return { packages: memberPackages };
 }
+
+export async function getMemberPackageDetail(params: {
+  memberAccountId: string;
+  memberPackageId: string;
+}) {
+  const memberPackage = await prisma.memberPackage.findFirst({
+    where: {
+      id: params.memberPackageId,
+      member: {
+        memberAccountId: params.memberAccountId,
+        status: 'ACTIVE',
+      },
+    },
+    include: {
+      package: true,
+      sessions: {
+        include: {
+          coach: { select: { id: true, name: true } },
+          reservation: { select: { startTime: true, endTime: true } },
+        },
+        orderBy: [{ date: 'desc' }, { createdAt: 'desc' }],
+      },
+      adjustments: {
+        include: { admin: { select: { id: true, name: true } } },
+        orderBy: { createdAt: 'desc' },
+      },
+    },
+  });
+
+  if (!memberPackage) {
+    throw new MemberAccountQueryError('NOT_MEMBER_OF_STUDIO');
+  }
+
+  return {
+    memberPackage: {
+      id: memberPackage.id,
+      packageId: memberPackage.packageId,
+      packageName: memberPackage.package?.name ?? '패키지',
+      totalSessions: memberPackage.totalSessions,
+      usedSessions: memberPackage.usedSessions,
+      remainingSessions: memberPackage.remainingSessions,
+      purchaseDate: memberPackage.purchaseDate.toISOString(),
+      expiryDate: memberPackage.expiryDate?.toISOString() ?? null,
+      status: memberPackage.status,
+      pauseStartDate: memberPackage.pauseStartDate
+        ? formatDateOnly(memberPackage.pauseStartDate)
+        : null,
+      pauseEndDate: memberPackage.pauseEndDate
+        ? formatDateOnly(memberPackage.pauseEndDate)
+        : null,
+      pauseExtensionDays: memberPackage.pauseExtensionDays,
+    },
+    sessions: memberPackage.sessions.map((session) => ({
+      id: session.id,
+      date: formatDateOnly(session.date),
+      startTime: session.reservation?.startTime ?? null,
+      endTime: session.reservation?.endTime ?? null,
+      coachId: session.coachId,
+      coachName: session.coach?.name ?? '',
+      attendance: session.attendance,
+    })),
+    adjustments: memberPackage.adjustments.map((adjustment) => ({
+      id: adjustment.id,
+      type: adjustment.type,
+      sessionDelta: adjustment.sessionDelta,
+      expiryDateBefore: adjustment.expiryDateBefore?.toISOString() ?? null,
+      expiryDateAfter: adjustment.expiryDateAfter?.toISOString() ?? null,
+      reason: adjustment.reason,
+      adminId: adjustment.adminId,
+      adminName: adjustment.admin?.name ?? '',
+      createdAt: adjustment.createdAt.toISOString(),
+    })),
+  };
+}

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { authMiddleware } from '../middleware/auth';
 import { requireCurrentOrgId, requireOrgRole, respondValidationError } from './_shared';
 import {
+  adjustMemberPackage,
   approvePauseRequest,
   assignPackageToMember,
   createPackage,
@@ -222,6 +223,65 @@ router.post('/member-packages/:id/pause/reject', async (req: Request, res: Respo
     }
     if (respondValidationError(res, err)) return;
     console.error('Reject pause request error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── Adjust Member Package (만료일 / 회차 조정) ─────────────
+const adjustMemberPackageSchema = z
+  .object({
+    type: z.enum(['EXTEND_EXPIRY', 'SHORTEN_EXPIRY', 'ADD_SESSIONS', 'DEDUCT_SESSIONS']),
+    sessionDelta: z.number().int().positive().optional(),
+    newExpiryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    reason: z.string().trim().max(300).optional(),
+  })
+  .refine(
+    (v) =>
+      (v.type === 'EXTEND_EXPIRY' || v.type === 'SHORTEN_EXPIRY')
+        ? !!v.newExpiryDate
+        : !!v.sessionDelta,
+    { message: '조정 타입에 맞는 필드가 필요합니다' },
+  );
+
+router.patch('/member-packages/:id/adjust', async (req: Request, res: Response) => {
+  try {
+    const orgId = await requireCurrentOrgId(req, res);
+    if (!orgId) return;
+    if (!(await requireOrgRole(req, res, orgId, ['OWNER', 'MANAGER']))) return;
+
+    const body = adjustMemberPackageSchema.parse(req.body ?? {});
+    const { updated, adjustment } = await adjustMemberPackage({
+      organizationId: orgId,
+      adminUserId: req.user!.userId,
+      memberPackageId: req.params.id as string,
+      type: body.type,
+      sessionDelta: body.sessionDelta,
+      newExpiryDate: body.newExpiryDate,
+      reason: body.reason,
+    });
+
+    res.json({ memberPackage: updated, adjustment });
+  } catch (err) {
+    if (err instanceof PackageMutationError) {
+      if (err.code === 'MEMBER_PACKAGE_NOT_FOUND') {
+        res.status(404).json({ error: 'Member package not found' });
+        return;
+      }
+      if (err.code === 'INSUFFICIENT_REMAINING') {
+        res.status(400).json({ error: '잔여 회차보다 큰 값을 차감할 수 없습니다' });
+        return;
+      }
+      if (err.code === 'INVALID_ADJUSTMENT') {
+        res.status(400).json({ error: '조정 값이 유효하지 않습니다' });
+        return;
+      }
+      if (err.code === 'EXPIRY_REQUIRED') {
+        res.status(400).json({ error: '새 만료일이 필요합니다' });
+        return;
+      }
+    }
+    if (respondValidationError(res, err)) return;
+    console.error('Adjust member package error:', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

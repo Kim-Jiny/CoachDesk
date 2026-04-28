@@ -392,6 +392,7 @@ class _MemberListScreenState extends ConsumerState<MemberListScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'member_list_add_fab',
         onPressed: () => context.push('/members-form'),
         child: const Icon(Icons.person_add),
       ),

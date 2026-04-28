@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/theme.dart';
 import '../../providers/auth_provider.dart';
+import '../../widgets/common.dart';
 
 class CenterCreateScreen extends ConsumerStatefulWidget {
   const CenterCreateScreen({super.key});
@@ -40,7 +41,7 @@ class _CenterCreateScreenState extends ConsumerState<CenterCreateScreen> {
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
 
-    return Scaffold(
+    return DismissKeyboardOnTap(child: Scaffold(
       appBar: AppBar(
         title: const Text('새 센터 만들기'),
         leading: IconButton(
@@ -148,6 +149,6 @@ class _CenterCreateScreenState extends ConsumerState<CenterCreateScreen> {
           ),
         ),
       ),
-    );
+    ));
   }
 }

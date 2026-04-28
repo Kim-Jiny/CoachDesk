@@ -11,6 +11,10 @@ class ScheduleStateCard extends StatelessWidget {
   final String message;
   final String actionLabel;
   final VoidCallback onAction;
+  final IconData? actionIcon;
+  final String? secondaryActionLabel;
+  final VoidCallback? onSecondaryAction;
+  final IconData? secondaryActionIcon;
 
   const ScheduleStateCard({
     super.key,
@@ -20,11 +24,17 @@ class ScheduleStateCard extends StatelessWidget {
     required this.message,
     required this.actionLabel,
     required this.onAction,
+    this.actionIcon,
+    this.secondaryActionLabel,
+    this.onSecondaryAction,
+    this.secondaryActionIcon,
   });
 
   @override
   Widget build(BuildContext context) {
     final resolvedIconColor = iconColor ?? Colors.grey.shade400;
+    final hasSecondary =
+        secondaryActionLabel != null && onSecondaryAction != null;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -53,10 +63,23 @@ class ScheduleStateCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          FilledButton.tonalIcon(
-            onPressed: onAction,
-            icon: const Icon(Icons.tune_rounded),
-            label: Text(actionLabel),
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              FilledButton.tonalIcon(
+                onPressed: onAction,
+                icon: Icon(actionIcon ?? Icons.tune_rounded),
+                label: Text(actionLabel),
+              ),
+              if (hasSecondary)
+                OutlinedButton.icon(
+                  onPressed: onSecondaryAction,
+                  icon: Icon(secondaryActionIcon ?? Icons.settings_rounded),
+                  label: Text(secondaryActionLabel!),
+                ),
+            ],
           ),
         ],
       ),

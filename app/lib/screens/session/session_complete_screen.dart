@@ -6,6 +6,7 @@ import '../../models/package.dart';
 import '../../models/reservation.dart';
 import '../../providers/package_provider.dart';
 import '../../providers/reservation_provider.dart';
+import '../../widgets/common.dart';
 
 class SessionCompleteScreen extends ConsumerStatefulWidget {
   final Reservation reservation;
@@ -97,7 +98,7 @@ class _SessionCompleteScreenState extends ConsumerState<SessionCompleteScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return DismissKeyboardOnTap(child: Scaffold(
       appBar: AppBar(title: const Text('세션 완료')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
@@ -247,6 +248,6 @@ class _SessionCompleteScreenState extends ConsumerState<SessionCompleteScreen> {
           ],
         ),
       ),
-    );
+    ));
   }
 }

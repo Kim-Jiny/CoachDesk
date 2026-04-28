@@ -112,11 +112,13 @@ class ChatMessage {
 class ChatMessagePreview {
   final String content;
   final String senderType;
+  final String messageType;
   final DateTime createdAt;
 
   const ChatMessagePreview({
     required this.content,
     required this.senderType,
+    this.messageType = 'TEXT',
     required this.createdAt,
   });
 
@@ -124,7 +126,11 @@ class ChatMessagePreview {
     return ChatMessagePreview(
       content: json['content'] as String,
       senderType: json['senderType'] as String,
+      messageType: json['messageType'] as String? ?? 'TEXT',
       createdAt: DateTime.parse(json['createdAt'] as String),
     );
   }
+
+  String get displayContent =>
+      messageType == 'IMAGE' ? '사진' : content;
 }

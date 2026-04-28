@@ -1,4 +1,5 @@
 import { getKstCurrentTimeMinutes, getKstDayOfWeek, isKstToday, parseDateOnly } from './kst-date';
+import { decodeMemoFields } from './memo-fields';
 import { prisma } from './prisma';
 import { findSchedulesCompat, findScheduleOverridesCompat } from './schedule-access';
 import { isTimeRangeClosed, isTimeRangeOverlapping } from './slot-blocking';
@@ -18,9 +19,14 @@ type SlotResult = {
   blockedOverrideId?: string;
   visibilityOverrideId?: string;
   coachName?: string;
+  sourceType?: 'SCHEDULE' | 'OPEN_OVERRIDE';
+  sourceScheduleId?: string;
+  sourceOverrideId?: string;
 };
 
 type ScheduleLike = {
+  id?: string;
+  sourceType?: 'SCHEDULE' | 'OPEN_OVERRIDE';
   coachId: string;
   startTime: string;
   endTime: string;
@@ -74,7 +80,7 @@ export async function getAvailableSlots(params: {
     includeCoach: includeCoachNames,
   });
 
-  const existingReservations = await prisma.reservation.findMany({
+  const reservationsRaw = await prisma.reservation.findMany({
     where: {
       organizationId,
       date: targetDate,
@@ -85,7 +91,18 @@ export async function getAvailableSlots(params: {
       coachId: true,
       startTime: true,
       endTime: true,
+      memo: true,
     },
+  });
+
+  // 지연된 예약은 원래 슬롯을 차지한 것으로 취급해 주변 슬롯은 가용 상태를 유지한다.
+  const existingReservations = reservationsRaw.map((reservation) => {
+    const memoFields = decodeMemoFields(reservation.memo);
+    return {
+      coachId: reservation.coachId,
+      startTime: memoFields.originalStartTime ?? reservation.startTime,
+      endTime: memoFields.originalEndTime ?? reservation.endTime,
+    };
   });
 
   const isToday = isKstToday(date);
@@ -123,6 +140,8 @@ export async function getAvailableSlots(params: {
       if (!override.startTime || !override.endTime) return [];
       return generateSlotsFromSchedule(
         {
+          id: override.id,
+          sourceType: 'OPEN_OVERRIDE',
           coachId: override.coachId,
           startTime: override.startTime,
           endTime: override.endTime,
@@ -229,6 +248,9 @@ function generateSlotsFromSchedule(
       maxCapacity: schedule.maxCapacity,
       isPublic: schedule.isPublic ?? false,
       baseIsPublic: schedule.isPublic ?? false,
+      sourceType: schedule.sourceType ?? 'SCHEDULE',
+      sourceScheduleId: schedule.sourceType != 'OPEN_OVERRIDE' ? schedule.id : undefined,
+      sourceOverrideId: schedule.sourceType == 'OPEN_OVERRIDE' ? schedule.id : undefined,
       ...(includeCoachNames ? { coachName: schedule.coach?.name ?? '' } : {}),
     });
   }

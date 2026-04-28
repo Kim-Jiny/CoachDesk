@@ -91,7 +91,7 @@ class _ChatRoomTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final displayName = isMember ? room.user.name : room.memberAccount.name;
-    final subtitle = room.lastMessage?.content ?? '새 대화를 시작하세요';
+    final subtitle = room.lastMessage?.displayContent ?? '새 대화를 시작하세요';
     final timeStr = room.lastMessageAt != null
         ? _formatTime(room.lastMessageAt!)
         : '';

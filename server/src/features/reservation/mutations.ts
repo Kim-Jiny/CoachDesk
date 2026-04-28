@@ -177,36 +177,27 @@ export async function delayReservation(params: {
       id: true,
       startTime: true,
       endTime: true,
+      memo: true,
     },
   });
 
   if (
     !params.force &&
-    conflictingReservations.some((reservation) =>
-      isOverlappingTimeRange(
+    conflictingReservations.some((reservation) => {
+      const otherMemo = decodeMemoFields(reservation.memo);
+      return isOverlappingTimeRange(
         newStartTime,
         newEndTime,
-        reservation.startTime,
-        reservation.endTime,
-      ),
-    )
+        otherMemo.originalStartTime ?? reservation.startTime,
+        otherMemo.originalEndTime ?? reservation.endTime,
+      );
+    })
   ) {
     throw new ReservationMutationError('DELAY_CONFLICT');
   }
 
   const memoFields = decodeMemoFields(existingReservation.memo);
   const updated = await prisma.$transaction(async (tx) => {
-    await tx.scheduleOverride.create({
-      data: {
-        organizationId: params.organizationId,
-        coachId: existingReservation.coachId,
-        date: existingReservation.date,
-        type: 'CLOSED',
-        startTime: existingReservation.startTime,
-        endTime: existingReservation.endTime,
-      },
-    });
-
     return tx.reservation.update({
       where: { id: existingReservation.id },
       data: {

@@ -24,10 +24,109 @@ export class PackageMutationError extends Error {
       | 'PACKAGE_NOT_FOUND'
       | 'MEMBER_NOT_FOUND'
       | 'MEMBER_PACKAGE_NOT_FOUND'
-      | 'NO_PENDING_PAUSE_REQUEST',
+      | 'NO_PENDING_PAUSE_REQUEST'
+      | 'INVALID_ADJUSTMENT'
+      | 'INSUFFICIENT_REMAINING'
+      | 'EXPIRY_REQUIRED',
   ) {
     super(code);
   }
+}
+
+export type MemberPackageAdjustmentType =
+  | 'EXTEND_EXPIRY'
+  | 'SHORTEN_EXPIRY'
+  | 'ADD_SESSIONS'
+  | 'DEDUCT_SESSIONS';
+
+export async function adjustMemberPackage(params: {
+  organizationId: string;
+  adminUserId: string;
+  memberPackageId: string;
+  type: MemberPackageAdjustmentType;
+  sessionDelta?: number;
+  newExpiryDate?: string | null;
+  reason?: string;
+}) {
+  const memberPackage = await prisma.memberPackage.findFirst({
+    where: {
+      id: params.memberPackageId,
+      member: { organizationId: params.organizationId },
+    },
+  });
+  if (!memberPackage) {
+    throw new PackageMutationError('MEMBER_PACKAGE_NOT_FOUND');
+  }
+
+  const reason = params.reason?.trim() || null;
+  const data: {
+    expiryDate?: Date | null;
+    totalSessions?: number;
+    remainingSessions?: number;
+  } = {};
+  let expiryBefore: Date | null = memberPackage.expiryDate ?? null;
+  let expiryAfter: Date | null = null;
+  let sessionDelta = 0;
+
+  if (params.type === 'EXTEND_EXPIRY' || params.type === 'SHORTEN_EXPIRY') {
+    if (!params.newExpiryDate) {
+      throw new PackageMutationError('EXPIRY_REQUIRED');
+    }
+    const parsed = parseDateOnly(params.newExpiryDate);
+    const current = memberPackage.expiryDate?.getTime() ?? null;
+    const next = parsed.getTime();
+    if (current !== null && next === current) {
+      throw new PackageMutationError('INVALID_ADJUSTMENT');
+    }
+    if (params.type === 'EXTEND_EXPIRY' && current !== null && next < current) {
+      throw new PackageMutationError('INVALID_ADJUSTMENT');
+    }
+    if (params.type === 'SHORTEN_EXPIRY' && current !== null && next > current) {
+      throw new PackageMutationError('INVALID_ADJUSTMENT');
+    }
+    data.expiryDate = parsed;
+    expiryAfter = parsed;
+  } else {
+    const delta = Math.abs(params.sessionDelta ?? 0);
+    if (delta <= 0) {
+      throw new PackageMutationError('INVALID_ADJUSTMENT');
+    }
+    if (params.type === 'ADD_SESSIONS') {
+      sessionDelta = delta;
+      data.totalSessions = memberPackage.totalSessions + delta;
+      data.remainingSessions = memberPackage.remainingSessions + delta;
+    } else {
+      if (memberPackage.remainingSessions < delta) {
+        throw new PackageMutationError('INSUFFICIENT_REMAINING');
+      }
+      sessionDelta = -delta;
+      data.totalSessions = memberPackage.totalSessions - delta;
+      data.remainingSessions = memberPackage.remainingSessions - delta;
+    }
+    expiryAfter = expiryBefore;
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    const updated = await tx.memberPackage.update({
+      where: { id: memberPackage.id },
+      data,
+      include: { package: true },
+    });
+    const adjustment = await tx.memberPackageAdjustment.create({
+      data: {
+        memberPackageId: memberPackage.id,
+        type: params.type,
+        sessionDelta,
+        expiryDateBefore: expiryBefore,
+        expiryDateAfter: expiryAfter,
+        reason,
+        adminId: params.adminUserId,
+      },
+    });
+    return { updated, adjustment };
+  });
+
+  return result;
 }
 
 export async function createPackage(params: {
