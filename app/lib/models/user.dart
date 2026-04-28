@@ -3,6 +3,7 @@ class User {
   final String email;
   final String name;
   final String? phone;
+  final bool isSuperAdmin;
   final String? profileImage;
   final String bookingMode;
   final String reservationPolicy;
@@ -17,6 +18,7 @@ class User {
     required this.email,
     required this.name,
     this.phone,
+    this.isSuperAdmin = false,
     this.profileImage,
     this.bookingMode = 'PRIVATE',
     this.reservationPolicy = 'AUTO_CONFIRM',
@@ -33,6 +35,7 @@ class User {
       email: json['email'] as String,
       name: json['name'] as String,
       phone: json['phone'] as String?,
+      isSuperAdmin: json['isSuperAdmin'] as bool? ?? false,
       profileImage: json['profileImage'] as String?,
       bookingMode: json['bookingMode'] as String? ?? 'PRIVATE',
       reservationPolicy: json['reservationPolicy'] as String? ?? 'AUTO_CONFIRM',
@@ -52,6 +55,7 @@ class User {
     'email': email,
     'name': name,
     'phone': phone,
+    'isSuperAdmin': isSuperAdmin,
     'profileImage': profileImage,
     'bookingMode': bookingMode,
     'reservationPolicy': reservationPolicy,
@@ -67,6 +71,7 @@ class User {
     String? email,
     String? name,
     String? phone,
+    bool? isSuperAdmin,
     String? profileImage,
     String? bookingMode,
     String? reservationPolicy,
@@ -81,6 +86,7 @@ class User {
       email: email ?? this.email,
       name: name ?? this.name,
       phone: phone ?? this.phone,
+      isSuperAdmin: isSuperAdmin ?? this.isSuperAdmin,
       profileImage: profileImage ?? this.profileImage,
       bookingMode: bookingMode ?? this.bookingMode,
       reservationPolicy: reservationPolicy ?? this.reservationPolicy,

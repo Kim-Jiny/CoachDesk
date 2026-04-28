@@ -29,11 +29,14 @@ String? handleRouterRedirect(Ref ref, GoRouterState state) {
     }
 
     final authState = ref.read(authProvider);
+    final isSuperAdmin = authState.user?.isSuperAdmin ?? false;
     if (authState.hasNoCenters) {
+      if (isSuperAdmin && isAdminPath(currentPath)) return null;
       if (centerPaths.contains(currentPath)) return null;
-      return '/onboarding';
+      return isSuperAdmin ? '/admin' : '/onboarding';
     }
     if (authState.needsCenterSelection) {
+      if (isSuperAdmin && isAdminPath(currentPath)) return null;
       if (centerPaths.contains(currentPath)) return null;
       return '/centers';
     }
@@ -47,15 +50,22 @@ String? handleRouterRedirect(Ref ref, GoRouterState state) {
 
   if (adminAuth && !isMemberMode) {
     final authState = ref.read(authProvider);
+    final isSuperAdmin = authState.user?.isSuperAdmin ?? false;
 
     if (authState.hasNoCenters) {
+      if (isSuperAdmin && isAdminPath(currentPath)) return null;
       if (centerPaths.contains(currentPath)) return null;
-      return '/onboarding';
+      return isSuperAdmin ? '/admin' : '/onboarding';
     }
 
     if (authState.needsCenterSelection) {
+      if (isSuperAdmin && isAdminPath(currentPath)) return null;
       if (centerPaths.contains(currentPath)) return null;
       return '/centers';
+    }
+
+    if (isSuperAdmin && isAdminPath(currentPath)) {
+      return null;
     }
 
     if (authPaths.contains(currentPath) ||

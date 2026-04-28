@@ -8,6 +8,7 @@ import '../../core/api_client.dart';
 import '../../core/theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/member_auth_provider.dart';
+import '../../widgets/admin_register_dialog.dart';
 
 final appVersionProvider = FutureProvider<PackageInfo>((ref) {
   return PackageInfo.fromPlatform();
@@ -128,6 +129,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             if (!isMember) ...[
               const SizedBox(height: 16),
+              if (authState.user?.isSuperAdmin == true) ...[
+                _SectionTitle('서비스 관리'),
+                _SettingsGroup(
+                  children: [
+                    _SettingsItem(
+                      icon: Icons.dashboard_customize_rounded,
+                      iconColor: Colors.deepPurple,
+                      title: '서비스 관리자 콘솔',
+                      subtitle: '센터와 유저를 전역 기준으로 조회하고 수정합니다',
+                      onTap: () => context.push('/admin'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+              ],
               _SectionTitle('센터 관리'),
               _SettingsGroup(
                 children: [
@@ -272,7 +288,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             }
             // Router redirect navigates based on center state
           } else if (context.mounted) {
-            context.go('/login');
+            // 관리자 계정이 아직 없으면 가입/로그인 다이얼로그를 띄운다.
+            // (context.go('/login')은 라우터 redirect가 다시 /member/home으로 돌려보내서 동작 안 함)
+            await showDialog<bool>(
+              context: context,
+              builder: (_) => const AdminRegisterDialog(),
+            );
           }
           return;
         }
