@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
 import '../../core/theme.dart';
+import '../../widgets/common.dart';
 
 class CenterSettingsScreen extends ConsumerStatefulWidget {
   const CenterSettingsScreen({super.key});
@@ -75,7 +76,7 @@ class _CenterSettingsScreenState extends ConsumerState<CenterSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return DismissKeyboardOnTap(child: Scaffold(
       appBar: AppBar(
         title: const Text('센터 설정'),
         actions: [
@@ -220,7 +221,7 @@ class _CenterSettingsScreenState extends ConsumerState<CenterSettingsScreen> {
                 ],
               ),
             ),
-    );
+    ));
   }
 }
 

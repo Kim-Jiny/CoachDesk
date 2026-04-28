@@ -9,6 +9,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/chat_provider.dart';
 import '../../providers/member_provider.dart';
 import '../../widgets/common.dart';
+import 'package_adjust_sheet.dart';
 
 final memberDetailProvider = FutureProvider.autoDispose
     .family<Map<String, dynamic>, String>((ref, id) async {
@@ -31,6 +32,25 @@ class _MemberDetailScreenState extends ConsumerState<MemberDetailScreen> {
   String? _processingPackageId;
 
   bool _isPackageActive(String? status) => status == 'PACKAGE_ACTIVE';
+
+  Future<void> _openAdjustSheet(Map<String, dynamic> package) async {
+    final expiryRaw = package['expiryDate'] as String?;
+    final result = await showPackageAdjustSheet(
+      context,
+      ref: ref,
+      memberPackageId: package['id'] as String,
+      remainingSessions: package['remainingSessions'] as int? ?? 0,
+      totalSessions: package['totalSessions'] as int? ?? 0,
+      expiryDate: expiryRaw != null ? DateTime.tryParse(expiryRaw) : null,
+    );
+    if (result == true && mounted) {
+      ref.invalidate(memberDetailProvider(widget.memberId));
+      ref.read(memberProvider.notifier).fetchMembers();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('패키지를 조정했습니다')),
+      );
+    }
+  }
 
   Future<void> _approvePauseRequest(String memberPackageId) async {
     setState(() => _processingPackageId = memberPackageId);
@@ -527,6 +547,7 @@ class _MemberDetailScreenState extends ConsumerState<MemberDetailScreen> {
                                     package['id'] as String,
                                   )
                                 : null,
+                            onAdjust: () => _openAdjustSheet(package),
                           ),
                         ),
                   const SizedBox(height: 16),
@@ -570,6 +591,7 @@ class _MemberDetailScreenState extends ConsumerState<MemberDetailScreen> {
                             package['pauseRequestStatus'] == 'PENDING'
                             ? () => _rejectPauseRequest(package['id'] as String)
                             : null,
+                        onAdjust: () => _openAdjustSheet(package),
                       ),
                     ),
                 ] else ...[
@@ -954,12 +976,14 @@ class _PackageProgressCard extends StatelessWidget {
   final Map<String, dynamic> package;
   final VoidCallback? onApprovePause;
   final VoidCallback? onRejectPause;
+  final VoidCallback? onAdjust;
   final bool isProcessing;
 
   const _PackageProgressCard({
     required this.package,
     this.onApprovePause,
     this.onRejectPause,
+    this.onAdjust,
     this.isProcessing = false,
   });
 
@@ -1152,6 +1176,17 @@ class _PackageProgressCard extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                     color: Colors.orange.shade800,
                   ),
+                ),
+              ),
+            ],
+            if (onAdjust != null) ...[
+              const SizedBox(height: 10),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: isProcessing ? null : onAdjust,
+                  icon: const Icon(Icons.tune_rounded, size: 18),
+                  label: const Text('만료일·회차 조정'),
                 ),
               ),
             ],

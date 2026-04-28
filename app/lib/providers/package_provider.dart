@@ -91,6 +91,32 @@ class PackageNotifier extends Notifier<PackageState> {
       return [];
     }
   }
+
+  Future<({bool success, String? errorMessage})> adjustMemberPackage({
+    required String memberPackageId,
+    required String type,
+    int? sessionDelta,
+    String? newExpiryDate,
+    String? reason,
+  }) async {
+    try {
+      await _dio.patch(
+        '/packages/member-packages/$memberPackageId/adjust',
+        data: {
+          'type': type,
+          if (sessionDelta != null) 'sessionDelta': sessionDelta,
+          if (newExpiryDate != null) 'newExpiryDate': newExpiryDate,
+          if (reason != null && reason.isNotEmpty) 'reason': reason,
+        },
+      );
+      return (success: true, errorMessage: null);
+    } on DioException catch (e) {
+      return (
+        success: false,
+        errorMessage: e.response?.data?['error'] as String? ?? '조정에 실패했습니다',
+      );
+    }
+  }
 }
 
 final packageProvider = NotifierProvider<PackageNotifier, PackageState>(PackageNotifier.new);

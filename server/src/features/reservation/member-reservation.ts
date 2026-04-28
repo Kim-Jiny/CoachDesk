@@ -5,6 +5,7 @@ import {
   getKstDayOfWeek,
   parseDateOnly,
 } from '../../utils/kst-date';
+import { decodeMemoFields } from '../../utils/memo-fields';
 import { findFirstScheduleCompat, findScheduleOverridesCompat } from '../../utils/schedule-access';
 import { isTimeRangeClosed } from '../../utils/slot-blocking';
 import { findGeneratedSlot } from '../../utils/slot-service';
@@ -163,16 +164,18 @@ export async function reserveMemberSlot(input: ReserveMemberSlotInput) {
         date: targetDate,
         status: { in: ['PENDING', 'CONFIRMED'] },
       },
-      select: { startTime: true, endTime: true },
+      select: { startTime: true, endTime: true, memo: true },
     });
-    const bookedOverlaps = overlappingReservations.filter((reservation) =>
-      isOverlappingTimeRange(
+    // 지연된 예약은 원래 슬롯으로만 충돌 판정.
+    const bookedOverlaps = overlappingReservations.filter((reservation) => {
+      const memoFields = decodeMemoFields(reservation.memo);
+      return isOverlappingTimeRange(
         input.startTime,
         input.endTime,
-        reservation.startTime,
-        reservation.endTime,
-      ),
-    ).length;
+        memoFields.originalStartTime ?? reservation.startTime,
+        memoFields.originalEndTime ?? reservation.endTime,
+      );
+    }).length;
     if (bookedOverlaps >= maxCapacity!) {
       throw new MemberReservationError('FULL');
     }

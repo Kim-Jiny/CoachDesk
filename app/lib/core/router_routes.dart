@@ -18,6 +18,7 @@ import '../screens/home/home_screen.dart';
 import '../screens/main_shell.dart';
 import '../screens/member_home/member_class_detail_screen.dart';
 import '../screens/member_home/member_home_screen.dart';
+import '../screens/member_home/member_package_detail_screen.dart';
 import '../screens/member_home/member_reservation_history_screen.dart';
 import '../screens/members/member_detail_screen.dart';
 import '../screens/members/member_form_screen.dart';
@@ -100,6 +101,13 @@ List<RouteBase> buildAppRoutes({
       path: '/member/history',
       parentNavigatorKey: rootNavigatorKey,
       builder: (context, state) => const MemberReservationHistoryScreen(),
+    ),
+    GoRoute(
+      path: '/member/packages/:id',
+      parentNavigatorKey: rootNavigatorKey,
+      builder: (context, state) => MemberPackageDetailScreen(
+        memberPackageId: state.pathParameters['id']!,
+      ),
     ),
     GoRoute(
       path: '/member/notifications',

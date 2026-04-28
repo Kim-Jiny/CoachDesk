@@ -1,4 +1,5 @@
 import { getKstCurrentTimeMinutes, getKstDayOfWeek, isKstToday, parseDateOnly } from './kst-date';
+import { decodeMemoFields } from './memo-fields';
 import { prisma } from './prisma';
 import { findSchedulesCompat, findScheduleOverridesCompat } from './schedule-access';
 import { isTimeRangeClosed, isTimeRangeOverlapping } from './slot-blocking';
@@ -74,7 +75,7 @@ export async function getAvailableSlots(params: {
     includeCoach: includeCoachNames,
   });
 
-  const existingReservations = await prisma.reservation.findMany({
+  const reservationsRaw = await prisma.reservation.findMany({
     where: {
       organizationId,
       date: targetDate,
@@ -85,7 +86,18 @@ export async function getAvailableSlots(params: {
       coachId: true,
       startTime: true,
       endTime: true,
+      memo: true,
     },
+  });
+
+  // 지연된 예약은 원래 슬롯을 차지한 것으로 취급해 주변 슬롯은 가용 상태를 유지한다.
+  const existingReservations = reservationsRaw.map((reservation) => {
+    const memoFields = decodeMemoFields(reservation.memo);
+    return {
+      coachId: reservation.coachId,
+      startTime: memoFields.originalStartTime ?? reservation.startTime,
+      endTime: memoFields.originalEndTime ?? reservation.endTime,
+    };
   });
 
   const isToday = isKstToday(date);

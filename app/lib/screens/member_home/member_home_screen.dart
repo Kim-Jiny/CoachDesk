@@ -675,7 +675,15 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
                             ? '${DateFormat('M/d').format(memberPackage.pauseStartDate!)} - ${DateFormat('M/d').format(memberPackage.pauseEndDate!)}'
                             : null;
 
-                        return Container(
+                        return GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () async {
+                            await context.push(
+                              '/member/packages/${memberPackage.id}',
+                            );
+                            _loadPackages();
+                          },
+                          child: Container(
                           margin: const EdgeInsets.only(bottom: 10),
                           padding: const EdgeInsets.all(16),
                           decoration: BoxDecoration(
@@ -828,6 +836,7 @@ class _MemberHomeScreenState extends ConsumerState<MemberHomeScreen> {
                                 ),
                               ),
                             ],
+                          ),
                           ),
                         );
                       }),

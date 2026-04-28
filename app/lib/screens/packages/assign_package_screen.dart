@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../models/package.dart';
 import '../../providers/package_provider.dart';
+import '../../widgets/common.dart';
 
 class AssignPackageScreen extends ConsumerStatefulWidget {
   final String memberId;
@@ -75,7 +76,7 @@ class _AssignPackageScreenState extends ConsumerState<AssignPackageScreen> {
     final activePackages = pkgState.packages.where((p) => p.isActive).toList();
     final formatter = NumberFormat('#,###');
 
-    return Scaffold(
+    return DismissKeyboardOnTap(child: Scaffold(
       appBar: AppBar(title: Text('${widget.memberName} 패키지 할당')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
@@ -171,6 +172,6 @@ class _AssignPackageScreenState extends ConsumerState<AssignPackageScreen> {
           ],
         ),
       ),
-    );
+    ));
   }
 }

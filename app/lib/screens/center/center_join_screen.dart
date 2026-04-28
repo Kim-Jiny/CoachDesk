@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/theme.dart';
 import '../../providers/auth_provider.dart';
 import '../../models/organization.dart';
+import '../../widgets/common.dart';
 
 class CenterJoinScreen extends ConsumerStatefulWidget {
   const CenterJoinScreen({super.key});
@@ -40,7 +41,7 @@ class _CenterJoinScreenState extends ConsumerState<CenterJoinScreen> {
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
 
-    return Scaffold(
+    return DismissKeyboardOnTap(child: Scaffold(
       appBar: AppBar(
         title: const Text('센터 합류'),
         leading: IconButton(
@@ -57,7 +58,7 @@ class _CenterJoinScreenState extends ConsumerState<CenterJoinScreen> {
             ? _buildSuccessView()
             : _buildFormView(authState),
       ),
-    );
+    ));
   }
 
   Widget _buildSuccessView() {

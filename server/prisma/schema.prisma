@@ -82,6 +82,7 @@ model User {
   notifications Notification[]
   chatRooms     ChatRoom[]
   centerJoinRequests CenterJoinRequest[]
+  memberPackageAdjustments MemberPackageAdjustment[] @relation("packageAdjustmentsByAdmin")
 }
 
 // ─── OrgMembership (User ↔ Org) ───────────────────────────
@@ -332,6 +333,31 @@ model MemberPackage {
   updatedAt         DateTime            @updatedAt
 
   sessions          Session[]
+  adjustments       MemberPackageAdjustment[]
+}
+
+// ─── MemberPackageAdjustment (관리자가 수동 조정한 이력) ──────
+model MemberPackageAdjustment {
+  id                String                        @id @default(uuid())
+  memberPackageId   String
+  memberPackage     MemberPackage                 @relation(fields: [memberPackageId], references: [id], onDelete: Cascade)
+  type              MemberPackageAdjustmentType
+  sessionDelta      Int                           @default(0)
+  expiryDateBefore  DateTime?
+  expiryDateAfter   DateTime?
+  reason            String?
+  adminId           String
+  admin             User                          @relation("packageAdjustmentsByAdmin", fields: [adminId], references: [id])
+  createdAt         DateTime                      @default(now())
+
+  @@index([memberPackageId, createdAt])
+}
+
+enum MemberPackageAdjustmentType {
+  EXTEND_EXPIRY
+  SHORTEN_EXPIRY
+  ADD_SESSIONS
+  DEDUCT_SESSIONS
 }
 
 enum PaymentMethod {

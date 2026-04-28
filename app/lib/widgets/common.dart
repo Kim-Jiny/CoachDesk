@@ -3,6 +3,22 @@ import 'package:shimmer/shimmer.dart';
 
 import '../core/theme.dart';
 
+/// 배경 탭 시 키보드/포커스를 해제해주는 래퍼. 입력 화면 최상위에 두고 사용.
+class DismissKeyboardOnTap extends StatelessWidget {
+  final Widget child;
+
+  const DismissKeyboardOnTap({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: child,
+    );
+  }
+}
+
 /// A card with gradient background and soft shadow
 class GradientCard extends StatelessWidget {
   final Widget child;

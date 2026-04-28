@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/api_client.dart';
 import '../../models/schedule_override.dart';
+import '../../widgets/common.dart';
 
 class ScheduleSettingScreen extends ConsumerStatefulWidget {
   const ScheduleSettingScreen({super.key});
@@ -176,7 +177,7 @@ class _ScheduleSettingScreenState extends ConsumerState<ScheduleSettingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return DismissKeyboardOnTap(child: Scaffold(
       appBar: AppBar(title: const Text('수업시간 설정')),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -344,7 +345,7 @@ class _ScheduleSettingScreenState extends ConsumerState<ScheduleSettingScreen> {
           ),
         ],
       ),
-    );
+    ));
   }
 }
 

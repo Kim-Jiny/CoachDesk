@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../models/package.dart';
 import '../../providers/package_provider.dart';
+import '../../widgets/common.dart';
 
 class PackageFormArgs {
   final Package? package;
@@ -89,7 +90,7 @@ class _PackageFormScreenState extends ConsumerState<PackageFormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return DismissKeyboardOnTap(child: Scaffold(
       appBar: AppBar(title: Text(isEditing ? '패키지 수정' : '패키지 등록')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
@@ -223,7 +224,7 @@ class _PackageFormScreenState extends ConsumerState<PackageFormScreen> {
           ),
         ),
       ),
-    );
+    ));
   }
 }
 

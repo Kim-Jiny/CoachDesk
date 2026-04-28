@@ -1043,7 +1043,11 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                         final cancelledCountMap = <String, int>{};
                         const inactiveStatuses = {'CANCELLED', 'NO_SHOW'};
                         for (final r in dayReservations) {
-                          final key = '${r.coachId}|${r.startTime}';
+                          // 지연된 예약은 원래 슬롯(originalStartTime)에 맞춰 그룹핑해
+                          // 8시 예약을 10분 미뤄도 "8시 타임" 카드로 표시되게 한다.
+                          final groupStartTime =
+                              r.originalStartTime ?? r.startTime;
+                          final key = '${r.coachId}|$groupStartTime';
                           if (inactiveStatuses.contains(r.status)) {
                             cancelledCountMap[key] =
                                 (cancelledCountMap[key] ?? 0) + 1;
@@ -1065,7 +1069,7 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                             matchedKeys.add(key);
                             timelineItems.add(
                               TimelineItem(
-                                startTime: reservations.first.startTime,
+                                startTime: slot['startTime'] as String,
                                 reservations: reservations,
                                 slot: slot,
                                 cancelledCount: cancelled,
@@ -1151,6 +1155,8 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                         }
 
                         if (filteredItems.isEmpty) {
+                          final showScheduleSettingAction =
+                              _filter == TimelineFilter.all;
                           return ListView(
                             physics: const AlwaysScrollableScrollPhysics(),
                             padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
@@ -1161,6 +1167,17 @@ class _ScheduleScreenState extends ConsumerState<ScheduleScreen> {
                                 message: emptyStateMessage,
                                 actionLabel: '스케줄 관리',
                                 onAction: _showOverrideSheet,
+                                secondaryActionLabel: showScheduleSettingAction
+                                    ? '수업시간 설정'
+                                    : null,
+                                secondaryActionIcon:
+                                    showScheduleSettingAction
+                                    ? Icons.schedule_rounded
+                                    : null,
+                                onSecondaryAction: showScheduleSettingAction
+                                    ? () =>
+                                          context.push('/settings/schedules')
+                                    : null,
                               ),
                             ],
                           );

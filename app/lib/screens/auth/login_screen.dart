@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/theme.dart';
 import '../../providers/auth_provider.dart';
+import '../../widgets/common.dart';
 import '../../widgets/social_login_buttons.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -38,7 +39,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget build(BuildContext context) {
     final authState = ref.watch(authProvider);
 
-    return Scaffold(
+    return DismissKeyboardOnTap(child: Scaffold(
       body: SingleChildScrollView(
         child: Column(
           children: [
@@ -220,6 +221,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ],
         ),
       ),
-    );
+    ));
   }
 }

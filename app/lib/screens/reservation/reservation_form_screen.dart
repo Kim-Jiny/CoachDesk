@@ -8,6 +8,7 @@ import '../../core/api_client.dart';
 import '../../core/constants.dart';
 import '../../core/theme.dart';
 import '../../providers/member_provider.dart';
+import '../../widgets/common.dart';
 import '../../providers/reservation_provider.dart';
 import '../../models/member.dart';
 
@@ -299,7 +300,7 @@ class _ReservationFormScreenState extends ConsumerState<ReservationFormScreen> {
     final memberState = ref.watch(memberProvider);
     final selectedMember = _resolveSelectedMember(memberState.members);
 
-    return Scaffold(
+    return DismissKeyboardOnTap(child: Scaffold(
       appBar: AppBar(title: const Text('예약 등록')),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
@@ -528,7 +529,7 @@ class _ReservationFormScreenState extends ConsumerState<ReservationFormScreen> {
           ),
         ),
       ),
-    );
+    ));
   }
 }
 
