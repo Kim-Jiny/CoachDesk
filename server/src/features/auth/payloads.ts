@@ -1,3 +1,5 @@
+import { isSuperAdminEmail } from '../../utils/super-admin';
+
 type MembershipUser = {
   memberships: Array<{
     role: string;
@@ -34,6 +36,7 @@ export function toUserPayload(user: {
     email: user.email,
     name: user.name,
     phone: user.phone,
+    isSuperAdmin: isSuperAdminEmail(user.email),
     profileImage: user.profileImage,
     bookingMode: user.bookingMode ?? 'PRIVATE',
     reservationPolicy: user.reservationPolicy ?? 'AUTO_CONFIRM',

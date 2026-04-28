@@ -15,3 +15,5 @@ const centerPaths = {
 
 bool isMemberPath(String path) =>
     path == '/member/home' || path.startsWith('/member/');
+
+bool isAdminPath(String path) => path == '/admin' || path.startsWith('/admin/');

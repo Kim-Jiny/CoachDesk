@@ -46,4 +46,8 @@ export const env = {
     .split(',')
     .map((value) => value.trim())
     .filter(Boolean),
+  SUPER_ADMIN_EMAILS: getOptionalEnv('SUPER_ADMIN_EMAILS', '')
+    .split(',')
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean),
 };

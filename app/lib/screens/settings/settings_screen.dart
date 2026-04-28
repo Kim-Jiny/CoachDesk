@@ -129,6 +129,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             if (!isMember) ...[
               const SizedBox(height: 16),
+              if (authState.user?.isSuperAdmin == true) ...[
+                _SectionTitle('서비스 관리'),
+                _SettingsGroup(
+                  children: [
+                    _SettingsItem(
+                      icon: Icons.dashboard_customize_rounded,
+                      iconColor: Colors.deepPurple,
+                      title: '서비스 관리자 콘솔',
+                      subtitle: '센터와 유저를 전역 기준으로 조회하고 수정합니다',
+                      onTap: () => context.push('/admin'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+              ],
               _SectionTitle('센터 관리'),
               _SettingsGroup(
                 children: [
