@@ -108,6 +108,7 @@ export function registerChatHandlers(socket: Socket) {
         createdAt: message.createdAt.toISOString(),
       };
 
+      const pushBody = messageType === 'IMAGE' ? '사진을 보냈습니다' : data.content;
       const targetRoomIds: string[] = [];
       if (senderType === 'USER') {
         // Coach sent → notify member
@@ -117,7 +118,7 @@ export function registerChatHandlers(socket: Socket) {
           chatRoom.memberAccount?.fcmToken,
           chatRoom.memberAccount?.notificationPreferences,
           chatRoom.user?.name ?? '코치',
-          data.content,
+          pushBody,
           { type: 'CHAT_MESSAGE', chatRoomId: data.chatRoomId },
         );
       } else {
@@ -128,7 +129,7 @@ export function registerChatHandlers(socket: Socket) {
           chatRoom.user?.fcmToken,
           chatRoom.user?.notificationPreferences,
           chatRoom.memberAccount?.name ?? '회원',
-          data.content,
+          pushBody,
           { type: 'CHAT_MESSAGE', chatRoomId: data.chatRoomId },
         );
       }

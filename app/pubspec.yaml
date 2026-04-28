@@ -29,6 +29,8 @@ dependencies:
   sign_in_with_apple: ^6.1.4
   crypto: ^3.0.6
   image_picker: ^1.1.2
+  image: ^4.5.4
+  exif: ^3.3.0
   flutter_local_notifications: ^21.0.0
   home_widget: ^0.8.0
   package_info_plus: ^10.0.0
