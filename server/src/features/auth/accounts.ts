@@ -10,7 +10,8 @@ export class AuthFlowError extends Error {
       | 'REFRESH_TOKEN_REQUIRED'
       | 'USER_NOT_FOUND'
       | 'MEMBER_ACCOUNT_NOT_FOUND'
-      | 'LAST_ORG_ADMIN',
+      | 'LAST_ORG_ADMIN'
+      | 'INVALID_NAME',
   ) {
     super(code);
   }
@@ -250,6 +251,30 @@ export async function registerMemberAccount(params: {
     refreshToken: params.generateRefreshToken(tokenPayload),
     memberAccount: toMemberAccountPayload(account),
   };
+}
+
+export async function updateMemberAccount(params: {
+  memberAccountId: string;
+  name: string;
+}) {
+  const account = await prisma.memberAccount.findUnique({
+    where: { id: params.memberAccountId },
+  });
+  if (!account) {
+    throw new AuthFlowError('MEMBER_ACCOUNT_NOT_FOUND');
+  }
+
+  const trimmed = params.name.trim();
+  if (trimmed.length === 0) {
+    throw new AuthFlowError('INVALID_NAME');
+  }
+
+  const updated = await prisma.memberAccount.update({
+    where: { id: params.memberAccountId },
+    data: { name: trimmed },
+  });
+
+  return { memberAccount: toMemberAccountPayload(updated) };
 }
 
 export async function deleteMemberAccount(memberAccountId: string) {

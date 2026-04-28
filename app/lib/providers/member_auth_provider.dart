@@ -426,6 +426,24 @@ class MemberAuthNotifier extends Notifier<MemberAuthState> {
     }
   }
 
+  Future<({bool success, String? errorMessage})> updateName(String name) async {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) {
+      return (success: false, errorMessage: '이름을 입력해주세요');
+    }
+    try {
+      await _dio.put('/auth/member/profile', data: {'name': trimmed});
+      state = state.copyWith(name: trimmed);
+      return (success: true, errorMessage: null);
+    } on DioException catch (e) {
+      return (
+        success: false,
+        errorMessage:
+            e.response?.data?['error'] as String? ?? '이름 변경에 실패했습니다',
+      );
+    }
+  }
+
   Future<MemberPackageDetail?> fetchMyPackageDetail(String memberPackageId) async {
     try {
       final response = await _dio.get(
