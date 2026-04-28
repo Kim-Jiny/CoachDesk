@@ -17,6 +17,7 @@ const googleAudiences = [
   env.GOOGLE_CLIENT_ID,
   env.GOOGLE_ANDROID_CLIENT_ID,
   env.GOOGLE_IOS_CLIENT_ID,
+  env.GOOGLE_WEB_CLIENT_ID,
 ].filter(Boolean);
 
 function buildAppleFallbackEmail(sub: string): string {
