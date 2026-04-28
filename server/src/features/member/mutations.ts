@@ -116,12 +116,19 @@ export async function updateMember(params: {
   memo?: string;
   status?: 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
 }) {
-  const { birthDate, quickMemo, memo, ...rest } = params;
+  const {
+    organizationId,
+    memberId,
+    birthDate,
+    quickMemo,
+    memo,
+    ...rest
+  } = params;
   const shouldUpdateMemo =
     quickMemo !== undefined || memo !== undefined;
 
   const member = await prisma.member.updateMany({
-    where: { id: params.memberId, organizationId: params.organizationId },
+    where: { id: memberId, organizationId },
     data: {
       ...rest,
       ...(shouldUpdateMemo
