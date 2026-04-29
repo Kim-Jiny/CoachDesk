@@ -8,7 +8,6 @@ import '../screens/auth/login_screen.dart';
 import '../screens/auth/member_login_screen.dart';
 import '../screens/auth/member_register_screen.dart';
 import '../screens/auth/register_screen.dart';
-import '../screens/admin/admin_console_screen.dart';
 import '../screens/center/center_create_screen.dart';
 import '../screens/center/center_join_screen.dart';
 import '../screens/center/center_list_screen.dart';
@@ -112,11 +111,6 @@ List<RouteBase> buildAppRoutes({
       path: '/member/notifications',
       parentNavigatorKey: rootNavigatorKey,
       builder: (context, state) => const MemberNotificationScreen(),
-    ),
-    GoRoute(
-      path: '/admin',
-      parentNavigatorKey: rootNavigatorKey,
-      builder: (context, state) => const AdminConsoleScreen(),
     ),
     GoRoute(
       path: '/members/:id',

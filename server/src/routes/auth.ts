@@ -1,4 +1,4 @@
-import { Router, Request, Response, urlencoded } from 'express';
+import { Router, Request, Response } from 'express';
 import { randomUUID } from 'crypto';
 import { z } from 'zod';
 import { prisma } from '../utils/prisma';
@@ -970,40 +970,5 @@ router.post('/member/social', async (req: Request, res: Response) => {
     handleSocialLoginError(res, 'Member social login error:', err);
   }
 });
-
-// ─── Apple Web Sign-In Callback ─────────────────────────
-// Apple은 Web Service ID의 Return URL로 application/x-www-form-urlencoded POST를 보낸다.
-// 이 엔드포인트는 토큰을 opener 창으로 postMessage 한 뒤 팝업을 닫는다.
-// (sign_in_with_apple_web 패키지 클라이언트가 이 메시지를 listen해서 결과를 처리)
-router.post(
-  '/apple/web-callback',
-  urlencoded({ extended: false }),
-  (req: Request, res: Response) => {
-    const payload = JSON.stringify(req.body ?? {});
-    const escaped = payload
-      .replace(/\\/g, '\\\\')
-      .replace(/"/g, '\\"')
-      .replace(/<\//g, '<\\/');
-    const html = `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><title>Apple Sign-In Callback</title></head>
-<body>
-<script>
-(function () {
-  try {
-    var data = JSON.parse("${escaped}");
-    if (window.opener) {
-      window.opener.postMessage(data, "*");
-    }
-  } catch (e) {}
-  window.close();
-})();
-</script>
-</body>
-</html>`;
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.send(html);
-  },
-);
 
 export default router;

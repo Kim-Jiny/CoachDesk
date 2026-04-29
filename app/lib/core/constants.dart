@@ -33,28 +33,8 @@ class AppConstants {
     defaultValue: 'http',
   );
 
-  /// Apple Service ID for "Sign in with Apple" on web (apple developer console).
-  /// 모바일은 번들 ID로 처리되므로 웹에서만 필요.
-  static const String appleWebServiceId = String.fromEnvironment(
-    'APPLE_WEB_SERVICE_ID',
-    defaultValue: '',
-  );
-
-  /// Apple Service ID에 등록한 Return URL — 서버의 콜백 엔드포인트.
-  /// 기본값: `<origin>/api/auth/apple/web-callback`
-  static const String appleWebRedirectUri = String.fromEnvironment(
-    'APPLE_WEB_REDIRECT_URI',
-    defaultValue: '',
-  );
-
   static String get apiBaseUrl {
     if (_configuredHost.isNotEmpty) return _configuredHost;
-    if (kIsWeb) {
-      if (kDebugMode && _configuredDebugHost.isNotEmpty) {
-        return _configuredDebugHost;
-      }
-      return '${Uri.base.origin}/api';
-    }
     if (!kDebugMode) return _configuredReleaseHost;
     if (_configuredDebugHost.isNotEmpty) return _configuredDebugHost;
 
