@@ -973,6 +973,30 @@ class _EmptyState extends StatelessWidget {
                   ),
                 ),
               ),
+              const SizedBox(height: 24),
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 16,
+                children: [
+                  TextButton.icon(
+                    onPressed: () => context.push('/member/settings'),
+                    icon: const Icon(Icons.settings_outlined, size: 18),
+                    label: const Text('앱 설정'),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => context.push('/member/settings'),
+                    icon: const Icon(
+                      Icons.delete_forever_outlined,
+                      size: 18,
+                      color: Colors.red,
+                    ),
+                    label: const Text(
+                      '회원 탈퇴',
+                      style: TextStyle(color: Colors.red),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
