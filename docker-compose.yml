@@ -63,12 +63,7 @@ services:
       - app-network
 
   coach:
-    build:
-      context: .
-      dockerfile: server/Dockerfile
-      args:
-        COACHDESK_API_BASE_URL: ${COACHDESK_API_BASE_URL:-}
-        APPLE_WEB_SERVICE_ID: ${APPLE_WEB_SERVICE_ID:-}
+    build: ./server
     container_name: coach-desk
     restart: unless-stopped
     depends_on:

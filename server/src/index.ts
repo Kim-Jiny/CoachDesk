@@ -1,5 +1,3 @@
-import fs from 'fs';
-import path from 'path';
 import express from 'express';
 import { createServer } from 'http';
 import cors from 'cors';
@@ -23,9 +21,6 @@ import centerRoutes from './routes/center';
 import adminRoutes from './routes/admin';
 
 const app = express();
-const webBuildPath = path.resolve(__dirname, '../../app/build/web');
-const webIndexPath = path.join(webBuildPath, 'index.html');
-const hasWebBuild = fs.existsSync(webIndexPath);
 
 // Middleware
 app.use(cors());
@@ -50,13 +45,6 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/centers', centerRoutes);
 app.use('/api/admin', adminRoutes);
-
-if (hasWebBuild) {
-  app.use(express.static(webBuildPath));
-  app.get(/^\/(?!api(?:\/|$)).*/, (_req, res) => {
-    res.sendFile(webIndexPath);
-  });
-}
 
 // Start server
 const httpServer = createServer(app);
