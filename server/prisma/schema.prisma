@@ -474,3 +474,12 @@ enum MessageType {
   IMAGE
   SYSTEM
 }
+
+// ─── AdminAccount (운영자 콘솔 전용 계정) ───────────────────
+model AdminAccount {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

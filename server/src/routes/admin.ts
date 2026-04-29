@@ -3,16 +3,90 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../utils/prisma';
-import { authMiddleware } from '../middleware/auth';
-import { requireSuperAdmin, isSuperAdminEmail } from '../utils/super-admin';
+import { isSuperAdminEmail } from '../utils/super-admin';
+import { adminAuthMiddleware, signAdminToken } from '../utils/admin-auth';
 import { checkAdminLimit } from '../utils/plan-limits';
 import { deleteMemberAccount, deleteUserAccount } from '../features/auth/accounts';
 
 const router = Router();
-router.use(authMiddleware);
-router.use((req, res, next) => {
-  if (!requireSuperAdmin(req, res)) return;
-  next();
+
+// ─── Admin Login (인증 미들웨어 이전에 위치) ─────────────
+const adminLoginSchema = z.object({
+  username: z.string().min(1).max(50),
+  password: z.string().min(1).max(200),
+});
+
+router.post('/login', async (req: Request, res: Response) => {
+  try {
+    const body = adminLoginSchema.parse(req.body);
+    const account = await prisma.adminAccount.findUnique({
+      where: { username: body.username },
+    });
+    if (!account) {
+      res.status(401).json({ error: 'Invalid credentials' });
+      return;
+    }
+    const ok = await bcrypt.compare(body.password, account.password);
+    if (!ok) {
+      res.status(401).json({ error: 'Invalid credentials' });
+      return;
+    }
+    const token = signAdminToken({
+      adminId: account.id,
+      username: account.username,
+    });
+    res.json({ token, admin: { id: account.id, username: account.username } });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: err.errors });
+      return;
+    }
+    console.error('Admin login error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── 이후 라우트는 모두 admin 토큰 인증 필요 ─────────────
+router.use(adminAuthMiddleware);
+
+router.get('/me', (req: Request, res: Response) => {
+  res.json({ admin: req.adminAccount });
+});
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(4).max(200),
+});
+
+router.post('/me/change-password', async (req: Request, res: Response) => {
+  try {
+    const body = changePasswordSchema.parse(req.body);
+    const account = await prisma.adminAccount.findUnique({
+      where: { id: req.adminAccount!.id },
+    });
+    if (!account) {
+      res.status(404).json({ error: 'Admin account not found' });
+      return;
+    }
+    const ok = await bcrypt.compare(body.currentPassword, account.password);
+    if (!ok) {
+      res.status(401).json({ error: 'Current password incorrect' });
+      return;
+    }
+    const hashed = await bcrypt.hash(body.newPassword, 10);
+    await prisma.adminAccount.update({
+      where: { id: account.id },
+      data: { password: hashed },
+    });
+    res.json({ success: true });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: err.errors });
+      return;
+    }
+    console.error('Admin change password error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
 });
 
 const searchQuerySchema = z.object({
@@ -286,20 +360,54 @@ function mapMemberAccountSummary(
 
 router.get('/dashboard', async (_req: Request, res: Response) => {
   try {
+    const since = new Date();
+    since.setHours(0, 0, 0, 0);
+    since.setDate(since.getDate() - 6); // 오늘 포함 최근 7일
+
     const [
       organizationCount,
       userCount,
       memberCount,
       memberAccountCount,
       pendingJoinRequestCount,
-    ] =
-      await Promise.all([
-        prisma.organization.count(),
-        prisma.user.count(),
-        prisma.member.count(),
-        prisma.memberAccount.count(),
-        prisma.centerJoinRequest.count({ where: { status: 'PENDING' } }),
-      ]);
+      recentUsers,
+      recentMemberAccounts,
+    ] = await Promise.all([
+      prisma.organization.count(),
+      prisma.user.count(),
+      prisma.member.count(),
+      prisma.memberAccount.count(),
+      prisma.centerJoinRequest.count({ where: { status: 'PENDING' } }),
+      prisma.user.findMany({
+        where: { createdAt: { gte: since } },
+        select: { createdAt: true },
+      }),
+      prisma.memberAccount.findMany({
+        where: { createdAt: { gte: since } },
+        select: { createdAt: true },
+      }),
+    ]);
+
+    // 일별 가입 수 집계 (사용자 + 회원 계정 합산)
+    const dayKey = (d: Date) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
+    const buckets = new Map<string, number>();
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(since);
+      d.setDate(since.getDate() + i);
+      buckets.set(dayKey(d), 0);
+    }
+    for (const row of [...recentUsers, ...recentMemberAccounts]) {
+      const key = dayKey(row.createdAt);
+      if (buckets.has(key)) buckets.set(key, (buckets.get(key) ?? 0) + 1);
+    }
+    const signupsLast7Days = Array.from(buckets.entries()).map(
+      ([date, count]) => ({ date, count }),
+    );
 
     res.json({
       organizationCount,
@@ -307,6 +415,7 @@ router.get('/dashboard', async (_req: Request, res: Response) => {
       memberCount,
       memberAccountCount,
       pendingJoinRequestCount,
+      signupsLast7Days,
     });
   } catch (err) {
     console.error('Admin dashboard error:', err);
@@ -723,7 +832,7 @@ router.put('/organizations/:id/join-requests/:requestId', async (req: Request, r
       await prisma.$transaction(async (tx) => {
         await tx.centerJoinRequest.update({
           where: { id: requestId },
-          data: { status: 'APPROVED', reviewedBy: req.user!.userId, reviewedAt: new Date() },
+          data: { status: 'APPROVED', reviewedBy: null, reviewedAt: new Date() },
         });
         await tx.orgMembership.upsert({
           where: {
@@ -743,7 +852,7 @@ router.put('/organizations/:id/join-requests/:requestId', async (req: Request, r
     } else {
       await prisma.centerJoinRequest.update({
         where: { id: requestId },
-        data: { status: 'REJECTED', reviewedBy: req.user!.userId, reviewedAt: new Date() },
+        data: { status: 'REJECTED', reviewedBy: null, reviewedAt: new Date() },
       });
     }
 
@@ -1116,10 +1225,6 @@ router.put('/users/:id', async (req: Request, res: Response) => {
 router.delete('/users/:id', async (req: Request, res: Response) => {
   try {
     const userId = req.params.id as string;
-    if (userId === req.user!.userId) {
-      res.status(400).json({ error: '현재 로그인한 계정은 여기서 삭제할 수 없습니다' });
-      return;
-    }
 
     const result = await deleteUserAccount(userId);
     res.json(result);
