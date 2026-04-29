@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CoachDesk 운영자 콘솔</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; }
+    [x-cloak] { display: none !important; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+<div x-data="adminApp()" x-init="init()" x-cloak>
+
+  <!-- 로그인 -->
+  <template x-if="!token">
+    <div class="min-h-screen flex items-center justify-center px-6">
+      <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg p-8">
+        <h1 class="text-xl font-bold text-center mb-1">CoachDesk 운영자 콘솔</h1>
+        <p class="text-sm text-slate-500 text-center mb-6">관리자 계정으로 로그인하세요</p>
+        <form @submit.prevent="login" class="space-y-3">
+          <div>
+            <label class="text-xs text-slate-500">아이디</label>
+            <input x-model="form.username" autocomplete="username" required
+                   class="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-400" />
+          </div>
+          <div>
+            <label class="text-xs text-slate-500">비밀번호</label>
+            <input x-model="form.password" type="password" autocomplete="current-password" required
+                   class="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-400" />
+          </div>
+          <p x-show="loginError" x-text="loginError" class="text-sm text-rose-500"></p>
+          <button type="submit" :disabled="loading"
+                  class="w-full py-2.5 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700 disabled:opacity-60">
+            <span x-show="!loading">로그인</span>
+            <span x-show="loading">처리 중...</span>
+          </button>
+        </form>
+      </div>
+    </div>
+  </template>
+
+  <!-- 메인 -->
+  <template x-if="token">
+    <div class="min-h-screen flex">
+      <!-- Sidebar -->
+      <aside class="w-56 bg-slate-900 text-slate-100 flex flex-col">
+        <div class="px-6 py-5 border-b border-slate-800">
+          <p class="text-xs text-slate-400">CoachDesk</p>
+          <p class="text-base font-bold">운영자 콘솔</p>
+        </div>
+        <nav class="flex-1 px-3 py-4 space-y-1">
+          <template x-for="item in nav" :key="item.id">
+            <button @click="page = item.id"
+                    :class="page === item.id ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:bg-slate-800'"
+                    class="w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2">
+              <span x-text="item.label"></span>
+            </button>
+          </template>
+        </nav>
+        <div class="px-4 py-4 border-t border-slate-800 text-xs text-slate-400 space-y-2">
+          <div>로그인: <span class="text-slate-200" x-text="me?.username"></span></div>
+          <button @click="page = 'password'" class="text-indigo-300 hover:text-indigo-200">비밀번호 변경</button>
+          <button @click="logout" class="block text-rose-300 hover:text-rose-200">로그아웃</button>
+        </div>
+      </aside>
+
+      <!-- Content -->
+      <main class="flex-1 px-8 py-6 overflow-x-auto">
+
+        <!-- Dashboard -->
+        <section x-show="page === 'dashboard'">
+          <h2 class="text-xl font-bold mb-4">대시보드</h2>
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <template x-for="card in dashboardCards" :key="card.label">
+              <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                <p class="text-xs text-slate-500" x-text="card.label"></p>
+                <p class="text-2xl font-bold mt-1" x-text="card.value"></p>
+              </div>
+            </template>
+          </div>
+          <div class="mt-6 bg-white rounded-xl shadow-sm border border-slate-200 p-5" x-show="hasChart">
+            <h3 class="font-semibold mb-3">최근 7일 가입</h3>
+            <canvas id="signupsChart" height="120"></canvas>
+          </div>
+        </section>
+
+        <!-- Users -->
+        <section x-show="page === 'users'">
+          <h2 class="text-xl font-bold mb-4">사용자 (관리자)</h2>
+          <div class="mb-4 flex gap-2">
+            <input x-model="usersSearch" @input.debounce.300ms="loadUsers()" placeholder="이름/이메일 검색"
+                   class="px-3 py-2 border border-slate-200 rounded-lg text-sm w-72" />
+            <button @click="loadUsers()" class="px-3 py-2 text-sm bg-slate-100 rounded-lg hover:bg-slate-200">새로고침</button>
+          </div>
+          <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-50 text-slate-500 text-xs uppercase">
+                <tr>
+                  <th class="text-left px-4 py-2">이름</th>
+                  <th class="text-left px-4 py-2">이메일</th>
+                  <th class="text-left px-4 py-2">전화</th>
+                  <th class="text-left px-4 py-2">생성일</th>
+                  <th class="text-left px-4 py-2">슈퍼관리자</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="u in users" :key="u.id">
+                  <tr class="border-t border-slate-100">
+                    <td class="px-4 py-2 font-medium" x-text="u.name"></td>
+                    <td class="px-4 py-2 text-slate-600" x-text="u.email"></td>
+                    <td class="px-4 py-2 text-slate-500" x-text="u.phone || '-'"></td>
+                    <td class="px-4 py-2 text-slate-500" x-text="formatDate(u.createdAt)"></td>
+                    <td class="px-4 py-2">
+                      <span x-show="u.isSuperAdmin" class="px-2 py-0.5 text-xs bg-indigo-100 text-indigo-700 rounded-full">SUPER</span>
+                    </td>
+                  </tr>
+                </template>
+                <tr x-show="!users.length"><td colspan="5" class="px-4 py-6 text-center text-slate-400">데이터가 없습니다</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Member Accounts -->
+        <section x-show="page === 'members'">
+          <h2 class="text-xl font-bold mb-4">회원 계정</h2>
+          <div class="mb-4 flex gap-2">
+            <input x-model="membersSearch" @input.debounce.300ms="loadMembers()" placeholder="이름/이메일 검색"
+                   class="px-3 py-2 border border-slate-200 rounded-lg text-sm w-72" />
+            <button @click="loadMembers()" class="px-3 py-2 text-sm bg-slate-100 rounded-lg hover:bg-slate-200">새로고침</button>
+          </div>
+          <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-50 text-slate-500 text-xs uppercase">
+                <tr>
+                  <th class="text-left px-4 py-2">이름</th>
+                  <th class="text-left px-4 py-2">이메일</th>
+                  <th class="text-left px-4 py-2">생성일</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="m in memberAccounts" :key="m.id">
+                  <tr class="border-t border-slate-100">
+                    <td class="px-4 py-2 font-medium" x-text="m.name"></td>
+                    <td class="px-4 py-2 text-slate-600" x-text="m.email"></td>
+                    <td class="px-4 py-2 text-slate-500" x-text="formatDate(m.createdAt)"></td>
+                  </tr>
+                </template>
+                <tr x-show="!memberAccounts.length"><td colspan="3" class="px-4 py-6 text-center text-slate-400">데이터가 없습니다</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Organizations -->
+        <section x-show="page === 'orgs'">
+          <h2 class="text-xl font-bold mb-4">조직</h2>
+          <div class="mb-4 flex gap-2">
+            <input x-model="orgsSearch" @input.debounce.300ms="loadOrgs()" placeholder="이름 검색"
+                   class="px-3 py-2 border border-slate-200 rounded-lg text-sm w-72" />
+            <button @click="loadOrgs()" class="px-3 py-2 text-sm bg-slate-100 rounded-lg hover:bg-slate-200">새로고침</button>
+          </div>
+          <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <table class="w-full text-sm">
+              <thead class="bg-slate-50 text-slate-500 text-xs uppercase">
+                <tr>
+                  <th class="text-left px-4 py-2">이름</th>
+                  <th class="text-left px-4 py-2">초대코드</th>
+                  <th class="text-left px-4 py-2">플랜</th>
+                  <th class="text-left px-4 py-2">관리자</th>
+                  <th class="text-left px-4 py-2">회원</th>
+                  <th class="text-left px-4 py-2">생성일</th>
+                </tr>
+              </thead>
+              <tbody>
+                <template x-for="o in organizations" :key="o.id">
+                  <tr class="border-t border-slate-100">
+                    <td class="px-4 py-2 font-medium" x-text="o.name"></td>
+                    <td class="px-4 py-2 font-mono text-xs text-slate-500" x-text="o.inviteCode"></td>
+                    <td class="px-4 py-2"><span class="px-2 py-0.5 text-xs bg-slate-100 rounded" x-text="o.planType"></span></td>
+                    <td class="px-4 py-2 text-slate-600" x-text="`${o.adminCount}/${o.maxAdminCount}`"></td>
+                    <td class="px-4 py-2 text-slate-600" x-text="`${o.memberCount}/${o.maxMemberCount}`"></td>
+                    <td class="px-4 py-2 text-slate-500" x-text="formatDate(o.createdAt)"></td>
+                  </tr>
+                </template>
+                <tr x-show="!organizations.length"><td colspan="6" class="px-4 py-6 text-center text-slate-400">데이터가 없습니다</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Password Change -->
+        <section x-show="page === 'password'">
+          <h2 class="text-xl font-bold mb-4">비밀번호 변경</h2>
+          <form @submit.prevent="changePassword" class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 max-w-md space-y-3">
+            <div>
+              <label class="text-xs text-slate-500">현재 비밀번호</label>
+              <input x-model="pw.current" type="password" required class="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg" />
+            </div>
+            <div>
+              <label class="text-xs text-slate-500">새 비밀번호 (4자 이상)</label>
+              <input x-model="pw.next" type="password" minlength="4" required class="mt-1 w-full px-3 py-2 border border-slate-200 rounded-lg" />
+            </div>
+            <p x-show="pw.message" x-text="pw.message" :class="pw.success ? 'text-emerald-600' : 'text-rose-500'" class="text-sm"></p>
+            <button type="submit" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-semibold hover:bg-indigo-700">변경</button>
+          </form>
+        </section>
+
+      </main>
+    </div>
+  </template>
+</div>
+
+<script>
+function adminApp() {
+  return {
+    token: localStorage.getItem('coachdesk_admin_token') || '',
+    me: null,
+    page: 'dashboard',
+    nav: [
+      { id: 'dashboard', label: '대시보드' },
+      { id: 'users',     label: '사용자' },
+      { id: 'members',   label: '회원 계정' },
+      { id: 'orgs',      label: '조직' },
+    ],
+    form: { username: '', password: '' },
+    loginError: '',
+    loading: false,
+    dashboardCards: [],
+    chart: null,
+    hasChart: false,
+
+    users: [], usersSearch: '',
+    memberAccounts: [], membersSearch: '',
+    organizations: [], orgsSearch: '',
+    pw: { current: '', next: '', message: '', success: false },
+
+    async init() {
+      if (this.token) {
+        await this.loadMe();
+        if (this.token) await this.loadDashboard();
+      }
+      this.$watch('page', (p) => {
+        if (p === 'dashboard') this.loadDashboard();
+        if (p === 'users') this.loadUsers();
+        if (p === 'members') this.loadMembers();
+        if (p === 'orgs') this.loadOrgs();
+      });
+    },
+
+    api(path, options = {}) {
+      const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+      if (this.token) headers['Authorization'] = 'Bearer ' + this.token;
+      return fetch('/api/admin' + path, { ...options, headers }).then(async (res) => {
+        if (res.status === 401 && path !== '/login') {
+          this.token = '';
+          localStorage.removeItem('coachdesk_admin_token');
+          throw new Error('Unauthorized');
+        }
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || res.statusText);
+        }
+        return res.json();
+      });
+    },
+
+    async login() {
+      this.loginError = '';
+      this.loading = true;
+      try {
+        const data = await this.api('/login', {
+          method: 'POST',
+          body: JSON.stringify(this.form),
+        });
+        this.token = data.token;
+        localStorage.setItem('coachdesk_admin_token', this.token);
+        this.me = data.admin;
+        this.form.password = '';
+        await this.loadDashboard();
+      } catch (e) {
+        this.loginError = e.message || '로그인 실패';
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    async loadMe() {
+      try {
+        const data = await this.api('/me');
+        this.me = data.admin;
+      } catch (_) { /* token cleared by api() */ }
+    },
+
+    logout() {
+      this.token = '';
+      localStorage.removeItem('coachdesk_admin_token');
+      this.me = null;
+      this.page = 'dashboard';
+    },
+
+    async loadDashboard() {
+      try {
+        const data = await this.api('/dashboard');
+        this.dashboardCards = [
+          { label: '전체 사용자',   value: data.userCount ?? '-' },
+          { label: '전체 회원 계정', value: data.memberAccountCount ?? '-' },
+          { label: '전체 조직',     value: data.organizationCount ?? '-' },
+          { label: '회원 등록 수',  value: data.memberCount ?? '-' },
+          { label: '센터 합류 대기', value: data.pendingJoinRequestCount ?? '-' },
+        ];
+        const series = data.signupsLast7Days || data.recentSignups || [];
+        this.$nextTick(() => this.renderSignupsChart(series));
+      } catch (e) {
+        console.error(e);
+      }
+    },
+
+    renderSignupsChart(series) {
+      const el = document.getElementById('signupsChart');
+      if (!el) return;
+      if (this.chart) { this.chart.destroy(); this.chart = null; }
+      this.hasChart = !!(series && series.length);
+      if (!series || series.length === 0) return;
+      const labels = series.map((p) => p.date || p.day || '');
+      const dataset = series.map((p) => p.count ?? p.value ?? 0);
+      this.chart = new Chart(el, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            label: '가입자',
+            data: dataset,
+            borderColor: 'rgb(79,70,229)',
+            backgroundColor: 'rgba(79,70,229,0.1)',
+            tension: 0.3,
+            fill: true,
+          }],
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true } },
+        },
+      });
+    },
+
+    async loadUsers() {
+      try {
+        const q = this.usersSearch ? '?search=' + encodeURIComponent(this.usersSearch) : '';
+        const data = await this.api('/users' + q);
+        this.users = data.users || data;
+      } catch (e) { console.error(e); }
+    },
+
+    async loadMembers() {
+      try {
+        const q = this.membersSearch ? '?search=' + encodeURIComponent(this.membersSearch) : '';
+        const data = await this.api('/member-accounts' + q);
+        this.memberAccounts = data.memberAccounts || data;
+      } catch (e) { console.error(e); }
+    },
+
+    async loadOrgs() {
+      try {
+        const q = this.orgsSearch ? '?search=' + encodeURIComponent(this.orgsSearch) : '';
+        const data = await this.api('/organizations' + q);
+        this.organizations = data.organizations || data;
+      } catch (e) { console.error(e); }
+    },
+
+    async changePassword() {
+      this.pw.message = '';
+      try {
+        await this.api('/me/change-password', {
+          method: 'POST',
+          body: JSON.stringify({ currentPassword: this.pw.current, newPassword: this.pw.next }),
+        });
+        this.pw.success = true;
+        this.pw.message = '비밀번호가 변경되었습니다';
+        this.pw.current = '';
+        this.pw.next = '';
+      } catch (e) {
+        this.pw.success = false;
+        this.pw.message = e.message || '변경에 실패했습니다';
+      }
+    },
+
+    formatDate(value) {
+      if (!value) return '-';
+      try {
+        const d = new Date(value);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}.${m}.${day}`;
+      } catch { return value; }
+    },
+  };
+}
+</script>
+</body>
+</html>

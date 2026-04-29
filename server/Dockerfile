@@ -17,6 +17,7 @@ RUN npm ci --omit=dev
 COPY prisma/ ./prisma/
 RUN npx prisma generate
 COPY --from=builder /app/dist ./dist
+COPY public/ ./public/
 COPY docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh
 

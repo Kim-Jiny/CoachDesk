@@ -1,3 +1,4 @@
+import path from 'path';
 import express from 'express';
 import { createServer } from 'http';
 import cors from 'cors';
@@ -6,6 +7,7 @@ import { env } from './config/env';
 import { prisma } from './utils/prisma';
 import { initializeFirebase } from './utils/firebase';
 import { initializeSocket } from './socket';
+import { ensureDefaultAdminAccount } from './utils/admin-auth';
 
 import authRoutes from './routes/auth';
 import organizationRoutes from './routes/organization';
@@ -46,6 +48,13 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/centers', centerRoutes);
 app.use('/api/admin', adminRoutes);
 
+// 운영자 콘솔 (정적 SPA, /admin)
+const adminWebPath = path.resolve(__dirname, '../public/admin');
+app.use('/admin', express.static(adminWebPath));
+app.get(/^\/admin(?:\/.*)?$/, (_req, res) => {
+  res.sendFile(path.join(adminWebPath, 'index.html'));
+});
+
 // Start server
 const httpServer = createServer(app);
 initializeSocket(httpServer);
@@ -54,6 +63,8 @@ async function main() {
   try {
     await prisma.$connect();
     console.log('Database connected');
+
+    await ensureDefaultAdminAccount();
 
     initializeFirebase();
 
