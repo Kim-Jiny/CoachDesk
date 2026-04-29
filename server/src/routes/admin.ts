@@ -360,9 +360,12 @@ function mapMemberAccountSummary(
 
 router.get('/dashboard', async (_req: Request, res: Response) => {
   try {
-    const since = new Date();
-    since.setHours(0, 0, 0, 0);
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const since = new Date(todayStart);
     since.setDate(since.getDate() - 6); // 오늘 포함 최근 7일
+    const tomorrowStart = new Date(todayStart);
+    tomorrowStart.setDate(tomorrowStart.getDate() + 1);
 
     const [
       organizationCount,
@@ -370,14 +373,30 @@ router.get('/dashboard', async (_req: Request, res: Response) => {
       memberCount,
       memberAccountCount,
       pendingJoinRequestCount,
+      todayUserCount,
+      todayMemberAccountCount,
+      todayReservationCount,
+      reservationsLast7Raw,
       recentUsers,
       recentMemberAccounts,
+      latestUsers,
+      latestMemberAccounts,
+      latestOrganizations,
     ] = await Promise.all([
       prisma.organization.count(),
       prisma.user.count(),
       prisma.member.count(),
       prisma.memberAccount.count(),
       prisma.centerJoinRequest.count({ where: { status: 'PENDING' } }),
+      prisma.user.count({ where: { createdAt: { gte: todayStart } } }),
+      prisma.memberAccount.count({ where: { createdAt: { gte: todayStart } } }),
+      prisma.reservation.count({
+        where: { date: { gte: todayStart, lt: tomorrowStart } },
+      }),
+      prisma.reservation.findMany({
+        where: { date: { gte: since } },
+        select: { date: true },
+      }),
       prisma.user.findMany({
         where: { createdAt: { gte: since } },
         select: { createdAt: true },
@@ -386,28 +405,68 @@ router.get('/dashboard', async (_req: Request, res: Response) => {
         where: { createdAt: { gte: since } },
         select: { createdAt: true },
       }),
+      prisma.user.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          createdAt: true,
+        },
+      }),
+      prisma.memberAccount.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          createdAt: true,
+        },
+      }),
+      prisma.organization.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        select: {
+          id: true,
+          name: true,
+          planType: true,
+          createdAt: true,
+          _count: { select: { memberships: true, members: true } },
+        },
+      }),
     ]);
 
-    // 일별 가입 수 집계 (사용자 + 회원 계정 합산)
     const dayKey = (d: Date) => {
       const y = d.getFullYear();
       const m = String(d.getMonth() + 1).padStart(2, '0');
       const day = String(d.getDate()).padStart(2, '0');
       return `${y}-${m}-${day}`;
     };
-    const buckets = new Map<string, number>();
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(since);
-      d.setDate(since.getDate() + i);
-      buckets.set(dayKey(d), 0);
-    }
+    const makeBuckets = () => {
+      const buckets = new Map<string, number>();
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(since);
+        d.setDate(since.getDate() + i);
+        buckets.set(dayKey(d), 0);
+      }
+      return buckets;
+    };
+    const signupBuckets = makeBuckets();
     for (const row of [...recentUsers, ...recentMemberAccounts]) {
       const key = dayKey(row.createdAt);
-      if (buckets.has(key)) buckets.set(key, (buckets.get(key) ?? 0) + 1);
+      if (signupBuckets.has(key)) {
+        signupBuckets.set(key, (signupBuckets.get(key) ?? 0) + 1);
+      }
     }
-    const signupsLast7Days = Array.from(buckets.entries()).map(
-      ([date, count]) => ({ date, count }),
-    );
+    const reservationBuckets = makeBuckets();
+    for (const row of reservationsLast7Raw) {
+      const key = dayKey(row.date);
+      if (reservationBuckets.has(key)) {
+        reservationBuckets.set(key, (reservationBuckets.get(key) ?? 0) + 1);
+      }
+    }
 
     res.json({
       organizationCount,
@@ -415,7 +474,36 @@ router.get('/dashboard', async (_req: Request, res: Response) => {
       memberCount,
       memberAccountCount,
       pendingJoinRequestCount,
-      signupsLast7Days,
+      todaySignupCount: todayUserCount + todayMemberAccountCount,
+      todayUserCount,
+      todayMemberAccountCount,
+      todayReservationCount,
+      signupsLast7Days: Array.from(signupBuckets.entries()).map(
+        ([date, count]) => ({ date, count }),
+      ),
+      reservationsLast7Days: Array.from(reservationBuckets.entries()).map(
+        ([date, count]) => ({ date, count }),
+      ),
+      latestUsers: latestUsers.map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        createdAt: u.createdAt.toISOString(),
+      })),
+      latestMemberAccounts: latestMemberAccounts.map((m) => ({
+        id: m.id,
+        name: m.name,
+        email: m.email,
+        createdAt: m.createdAt.toISOString(),
+      })),
+      latestOrganizations: latestOrganizations.map((o) => ({
+        id: o.id,
+        name: o.name,
+        planType: o.planType,
+        adminCount: o._count.memberships,
+        memberCount: o._count.members,
+        createdAt: o.createdAt.toISOString(),
+      })),
     });
   } catch (err) {
     console.error('Admin dashboard error:', err);
